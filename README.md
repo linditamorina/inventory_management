@@ -55,7 +55,7 @@ In today’s fast-paced market, manual inventory tracking is a bottleneck. Our I
 ### 1. Clone & Install
 ```bash
 git clone [https://github.com/linditamorina/InventoryManagementSystem.git](https://github.com/linditamorina/InventoryManagementSystem.git)
-cd inventory-system
+cd inventory_management
 npm install
 
 2. Environment Configuration
