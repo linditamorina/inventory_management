@@ -40,7 +40,7 @@ In today’s fast-paced market, manual inventory tracking is a bottleneck. Our I
 
 ### 🤖 The AI Advantage
 * **Predictive Analytics:** Forecasting stock depletion based on historical sales trends.
-* **Smart Receipt Scanner:** OCR-powered automation to extract data from supplier invoices.
+* **AI Smart PDF:** Automation to extract data from supplier invoices.
 * **Auto-Gen Descriptions:** Professional, SEO-optimized product descriptions generated in seconds.
 
 ### 📦 Core Functionality
