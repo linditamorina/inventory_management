@@ -57,14 +57,14 @@ export default function Navbar() {
         <Settings size={20} className="text-slate-400 cursor-pointer hover:text-slate-600" />
         <HelpCircle size={20} className="text-slate-400 cursor-pointer hover:text-slate-600" />
         
-        {/* PROFILE */}
-        <div className="flex items-center gap-3 pl-4 border-l border-gray-100 ml-2 cursor-pointer group">
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xs font-black italic shadow-sm group-hover:scale-105 transition-all">
-            DB
+        {/* AVATARI I PËRDORUESIT */}
+        <div className="flex items-center gap-3 pl-4 border-l border-slate-100">
+          <div className="text-right hidden md:block">
+            <p className="text-xs font-black text-slate-900 uppercase">Lindita M.</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Admin</p>
           </div>
-          <div className="hidden lg:flex flex-col">
-            <span className="text-xs font-black text-gray-800 italic uppercase tracking-tighter leading-none">Dion Beqiri</span>
-            <span className="text-[9px] font-bold text-gray-400 uppercase">Admin</span>
+          <div className="w-9 h-9 bg-red-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-red-600/20">
+            LM
           </div>
         </div>
       </div>
