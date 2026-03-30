@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { 
   Package, Plus, Search, Filter, Edit3, Trash2, 
-  X, Loader2, CheckCircle, AlertTriangle, Trash, Sparkles 
+  X, Loader2, CheckCircle, AlertTriangle, Trash, Sparkles, LayoutGrid, AlertCircle 
 } from 'lucide-react';
 import { 
   useProducts, 
@@ -26,6 +26,10 @@ export default function InventoryPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
+  // 3. States për Filtrat e Rinj
+  const [categoryFilter, setCategoryFilter] = useState('Të Gjitha');
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -119,10 +123,20 @@ export default function InventoryPage() {
     }
   };
 
-  const filteredProducts = products.filter((p: any) => 
-    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // LOGJIKA E FILTRIMIT TE RREPTË (Emër + Kategori + Stok)
+  const filteredProducts = products.filter((p: any) => {
+    const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          p.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesCategory = categoryFilter === 'Të Gjitha' || p.category === categoryFilter;
+    
+    const matchesLowStock = showLowStockOnly ? (Number(p.stock_quantity) <= Number(p.min_stock_level)) : true;
+
+    return matchesSearch && matchesCategory && matchesLowStock;
+  });
+
+  // Gjenerimi i Kategorive Unike për Dropdown
+  const uniqueCategories = ['Të Gjitha', ...new Set(products.map((p: any) => p.category))];
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 italic relative min-h-screen font-medium">
@@ -144,19 +158,44 @@ export default function InventoryPage() {
         </button>
       </div>
 
-      {/* SEARCH BAR */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="md:col-span-3 relative group">
+      {/* SEARCH BAR & FILTERS */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Input i Kërkimit */}
+        <div className="flex-1 relative group">
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-red-600 transition-colors" size={20} />
           <input 
             type="text" 
             placeholder="Kërko me Emër ose SKU..." 
             className="w-full pl-14 pr-6 py-5 bg-white border border-slate-200 rounded-[1.5rem] outline-none focus:ring-4 focus:ring-red-600/5 focus:border-red-600 font-bold transition-all shadow-sm"
+            value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <button className="bg-white border border-slate-200 py-5 rounded-[1.5rem] font-black text-slate-600 uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-slate-50 transition-all">
-          <Filter size={18} /> Filtra
+
+        {/* Dropdown i Kategorive */}
+        <div className="relative flex-shrink-0">
+          <select 
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full lg:w-48 pl-12 pr-6 py-5 bg-white border border-slate-200 rounded-[1.5rem] outline-none focus:ring-4 focus:ring-red-600/5 focus:border-red-600 font-black text-slate-600 uppercase text-[10px] tracking-widest transition-all shadow-sm appearance-none cursor-pointer"
+          >
+            {uniqueCategories.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+          <LayoutGrid className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        </div>
+
+        {/* Butoni i Stokut të Ulët */}
+        <button 
+          onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+          className={`flex-shrink-0 py-5 px-8 rounded-[1.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all shadow-sm border ${
+            showLowStockOnly 
+              ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' 
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <AlertCircle size={18} /> {showLowStockOnly ? 'Trego të Gjitha' : 'Stok i Ulët'}
         </button>
       </div>
 
@@ -176,6 +215,8 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-slate-50">
               {isLoading ? (
                 <tr><td colSpan={5} className="p-32 text-center font-black text-slate-300 uppercase tracking-[0.3em]">Duke ngarkuar...</td></tr>
+              ) : filteredProducts.length === 0 ? (
+                <tr><td colSpan={5} className="p-32 text-center font-black text-slate-300 uppercase tracking-widest">Asnjë produkt nuk u gjet.</td></tr>
               ) : (
                 filteredProducts.map((p: any) => (
                   <tr key={p.id} className="hover:bg-slate-50/80 transition-all group italic font-medium">
@@ -316,4 +357,4 @@ export default function InventoryPage() {
       )}
     </div>
   );
-}
+}PO
