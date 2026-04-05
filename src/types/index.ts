@@ -33,6 +33,7 @@ export interface StockMovement {
   type: 'in' | 'out';
   quantity: number;
   reason: string | null;
+  worker_name: string | null;
   created_at: string;
 }
 export type InsertStockMovement = Omit<StockMovement, 'id' | 'created_at'>;
