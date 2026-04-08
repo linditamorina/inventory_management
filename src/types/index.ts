@@ -36,3 +36,13 @@ export interface StockMovement {
   created_at: string;
 }
 export type InsertStockMovement = Omit<StockMovement, 'id' | 'created_at'>;
+
+export interface StockPrediction {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  current_stock: number;
+  velocity: number; // Shitje në ditë
+  days_remaining: number;
+  status: 'CRITICAL' | 'WARNING' | 'GOOD';
+}
