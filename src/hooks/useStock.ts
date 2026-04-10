@@ -10,6 +10,8 @@ export function useProductMovements(productId: string) {
   });
 }
 
+// src/hooks/useStock.ts
+
 export function useRecordMovement() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -17,6 +19,8 @@ export function useRecordMovement() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['stock_movements', variables.product_id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      // SHTO KETE RRESHT: Rifreskon parashikimet AI sapo ndryshon stoku
+      queryClient.invalidateQueries({ queryKey: ['stock-predictions'] });
     },
   });
 }
