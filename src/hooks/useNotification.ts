@@ -25,15 +25,20 @@ export const useNotifications = () => {
   // 2. Logjika Real-time (Sync automatik me databazën)
   useEffect(() => {
     const channel = supabase
-      .channel('notifications-realtime')
+      .channel('public:notifications') // Emër i përditësuar për të shmangur konfliktet
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'notifications' }, 
-        () => {
+        (payload) => {
+          console.log("Realtime event u kap:", payload); // Për debugging
           // Kur ndodh çdo lloj ndryshimi (Insert/Update/Delete), rifresko të dhënat
           queryClient.invalidateQueries({ queryKey: ['notifications'] });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log("Supabase Realtime: Lidhja për njoftimet është AKTIVE!");
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -50,7 +55,12 @@ export const useNotifications = () => {
         created_at: new Date().toISOString()
       }]);
 
-    if (error) console.error("Gabim gjatë shtimit të njoftimit:", error.message);
+    if (error) {
+      console.error("Gabim gjatë shtimit të njoftimit:", error.message);
+    } else {
+      // RREGULLIMI KRYESOR: Rifresko zilen MENJËHERË sapo shtohet njoftimi!
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    }
   };
 
   // 4. Funksioni për të fshirë njoftimin (Butoni X)

@@ -79,7 +79,6 @@ export default function Navbar() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation(); // Ndalon klikimin e kutisë që mos të bëhet "markAsRead" kur fshijmë
-                          console.log("Fshirja u aktivizua për ID:", n.id);
                           deleteNotification(n.id);
                         }}
                         className="absolute right-2 top-3 p-1 hover:bg-red-100 rounded-full text-slate-300 hover:text-red-600 transition-all z-[110]"
