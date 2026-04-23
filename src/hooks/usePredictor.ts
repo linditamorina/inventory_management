@@ -24,7 +24,7 @@ export function usePredictor(daysHistory: number = 30) {
     // 1. Nëse stoku është 0 ose më pak
     if (currentStock <= 0) {
       return { 
-        message: `Rrezik mbarimi! (Merr +${toOrder} CP)`, 
+        message: `Mbaruan! (Merr +${toOrder} CP)`, 
         color: "red",
         suggestion: toOrder 
       };

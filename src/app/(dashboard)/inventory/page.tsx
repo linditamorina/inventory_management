@@ -88,7 +88,12 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
   if (!adjustingProduct) return;
 
   const quantityChange = parseInt(adjustmentData.quantity);
-  if (isNaN(quantityChange)) return;
+  
+  // RREGULLIMI 1: Validimi i sasisë - nuk lejohet 0 ose numra negativë
+  if (isNaN(quantityChange) || quantityChange <= 0) {
+    alert("Sasia duhet të jetë më e madhe se 0!");
+    return;
+  }
 
   const currentStock = adjustingProduct.quantity || 0;
   const newTotalStock = adjustmentData.type === "IN" 
@@ -160,6 +165,15 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
   });
 
   const uniqueCategories = ["Të Gjitha", ...new Set(products.map((p: any) => p.category))];
+
+  // RREGULLIMI 2: Funksion për të ndryshuar arsyjen automatikisht kur ndryshohet tipi
+  const handleTypeChange = (newType: "IN" | "OUT") => {
+    setAdjustmentData({
+      ...adjustmentData,
+      type: newType,
+      reason: newType === "IN" ? "Furnizim i ri" : "Shitje",
+    });
+  };
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 italic relative min-h-screen font-medium">
@@ -329,12 +343,12 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
             </div>
             <form onSubmit={handleAdjustmentSubmit} className="p-8 space-y-6">
               <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                <button type="button" onClick={() => setAdjustmentData({ ...adjustmentData, type: "IN" })} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${adjustmentData.type === "IN" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400"}`}>Hyrje (+)</button>
-                <button type="button" onClick={() => setAdjustmentData({ ...adjustmentData, type: "OUT" })} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${adjustmentData.type === "OUT" ? "bg-white text-red-600 shadow-sm" : "text-slate-400"}`}>Dalje (-)</button>
+                <button type="button" onClick={() => handleTypeChange("IN")} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${adjustmentData.type === "IN" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400"}`}>Hyrje (+)</button>
+                <button type="button" onClick={() => handleTypeChange("OUT")} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${adjustmentData.type === "OUT" ? "bg-white text-red-600 shadow-sm" : "text-slate-400"}`}>Dalje (-)</button>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase">Sasia</label>
-                <input required type="number" placeholder="0" value={adjustmentData.quantity} onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-slate-900 font-black text-xl" />
+                <input required type="number" min="1" placeholder="0" value={adjustmentData.quantity} onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-slate-900 font-black text-xl" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase">Arsyeja</label>
