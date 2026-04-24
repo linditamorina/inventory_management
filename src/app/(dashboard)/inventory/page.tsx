@@ -9,6 +9,7 @@ import {
 import { useProducts, useCreateProduct, useDeleteProduct, useUpdateProduct } from "../../../hooks/useProducts";
 import { useProductMovements, useRecordMovement } from "../../../hooks/useStock";
 import { usePredictor } from "../../../hooks/usePredictor";
+import { useNotifications } from "../../../hooks/useNotification"; // IMPORTI I RI
 
 export default function InventoryPage() {
   const { data: products = [], isLoading } = useProducts();
@@ -18,6 +19,7 @@ export default function InventoryPage() {
   const recordMovement = useRecordMovement();
   
   const { getStockStatus } = usePredictor();
+  const { addNotification } = useNotifications(); // INITIALIZIMI I RI
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -51,6 +53,17 @@ export default function InventoryPage() {
     min_stock_level: "2",
   });
 
+  // FUNKSIONI NDIHMES PER MESAZHET E NJOFTIMEVE
+  const triggerStockNotification = (name: string, quantity: number, minLevel: number) => {
+    if (quantity === 0) {
+      addNotification(`ALARM: Stoku për "${name.toUpperCase()}" ka mbaruar plotësisht!`);
+    } else if (quantity <= minLevel) {
+      addNotification(`KUJDES: "${name.toUpperCase()}" ka arritur limitin kritik (${quantity} mbetur).`);
+    } else {
+      addNotification(`Përditësim: Stoku i "${name.toUpperCase()}" u përditësua në ${quantity} CP.`);
+    }
+  };
+
   const generateAIDescription = async () => {
     if (!formData.name) return alert("Ju lutem shkruani emrin e produktit.");
     setIsGeneratingAI(true);
@@ -83,44 +96,48 @@ export default function InventoryPage() {
     setIsModalOpen(true);
   };
 
-const handleAdjustmentSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!adjustingProduct) return;
+  const handleAdjustmentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustingProduct) return;
 
-  const quantityChange = parseInt(adjustmentData.quantity);
-  
-  // RREGULLIMI 1: Validimi i sasisë - nuk lejohet 0 ose numra negativë
-  if (isNaN(quantityChange) || quantityChange <= 0) {
-    alert("Sasia duhet të jetë më e madhe se 0!");
-    return;
-  }
-
-  const currentStock = adjustingProduct.quantity || 0;
-  const newTotalStock = adjustmentData.type === "IN" 
-    ? currentStock + quantityChange
-    : currentStock - quantityChange;
-
-  const finalStock = Math.max(0, newTotalStock);
-
-  recordMovement.mutate(
-    {
-      product_id: adjustingProduct.id,
-      type: adjustmentData.type as "IN" | "OUT",
-      quantity: quantityChange,
-      reason: adjustmentData.reason,
-    },
-    {
-      onSuccess: () => {
-        updateMutation.mutate({
-          id: adjustingProduct.id,
-          updates: { quantity: finalStock } 
-        });
-        setIsAdjustmentModalOpen(false);
-        setAdjustmentData({ type: "IN", quantity: "", reason: "Furnizim i ri" });
-      },
+    const quantityChange = parseInt(adjustmentData.quantity);
+    
+    if (isNaN(quantityChange) || quantityChange <= 0) {
+      alert("Sasia duhet të jetë më e madhe se 0!");
+      return;
     }
-  );
-};
+
+    const currentStock = adjustingProduct.quantity || 0;
+    const newTotalStock = adjustmentData.type === "IN" 
+      ? currentStock + quantityChange
+      : currentStock - quantityChange;
+
+    const finalStock = Math.max(0, newTotalStock);
+
+    recordMovement.mutate(
+      {
+        product_id: adjustingProduct.id,
+        type: adjustmentData.type as "IN" | "OUT",
+        quantity: quantityChange,
+        reason: adjustmentData.reason,
+      },
+      {
+        onSuccess: () => {
+          updateMutation.mutate({
+            id: adjustingProduct.id,
+            updates: { quantity: finalStock } 
+          }, {
+            onSuccess: () => {
+              // NJOFTIMI PAS RREGULLIMIT TE STOKUT
+              triggerStockNotification(adjustingProduct.name, finalStock, adjustingProduct.min_stock_level);
+            }
+          });
+          setIsAdjustmentModalOpen(false);
+          setAdjustmentData({ type: "IN", quantity: "", reason: "Furnizim i ri" });
+        },
+      }
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,13 +154,20 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
     if (editingProduct) {
       updateMutation.mutate(
         { id: editingProduct.id, updates: productData },
-        { onSuccess: () => { setIsModalOpen(false); setEditingProduct(null); } }
+        { onSuccess: () => { 
+          setIsModalOpen(false); 
+          setEditingProduct(null);
+          // NJOFTIMI PAS EDITIMIT
+          triggerStockNotification(productData.name, productData.quantity, productData.min_stock_level);
+        } }
       );
     } else {
       createMutation.mutate(productData as any, {
         onSuccess: () => {
           setIsModalOpen(false);
           setFormData({ name: "", sku: "", category: "Pajisje", price: "", quantity: "", description: "", min_stock_level: "2" });
+          // NJOFTIMI PAS SHTIMIT TE RI
+          addNotification(`Produkt i ri: "${productData.name.toUpperCase()}" u shtua në inventar.`);
         },
       });
     }
@@ -151,8 +175,14 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
 
   const confirmDelete = () => {
     if (deleteId) {
+      const productToDelete = products.find((p: any) => p.id === deleteId);
       deleteMutation.mutate(deleteId, {
-        onSuccess: () => { setDeleteConfirmOpen(false); setDeleteId(null); },
+        onSuccess: () => { 
+          setDeleteConfirmOpen(false); 
+          setDeleteId(null); 
+          // NJOFTIMI PAS FSHIRJES
+          addNotification(`Produkti "${productToDelete?.name?.toUpperCase() || 'i zgjedhur'}" u fshi nga sistemi.`);
+        },
       });
     }
   };
@@ -166,7 +196,6 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
 
   const uniqueCategories = ["Të Gjitha", ...new Set(products.map((p: any) => p.category))];
 
-  // RREGULLIMI 2: Funksion për të ndryshuar arsyjen automatikisht kur ndryshohet tipi
   const handleTypeChange = (newType: "IN" | "OUT") => {
     setAdjustmentData({
       ...adjustmentData,
@@ -247,7 +276,6 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
                 <tr><td colSpan={5} className="p-32 text-center font-black text-slate-300 uppercase tracking-widest">Asnjë produkt u gjet.</td></tr>
               ) : (
                 filteredProducts.map((p: any) => {
-                  // NDRYSHIMI: Kalojmë edhe min_stock_level te statusi
                   const status = getStockStatus(p.id, p.quantity, p.min_stock_level);
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/80 transition-all group italic font-medium">
@@ -404,7 +432,6 @@ const handleAdjustmentSubmit = (e: React.FormEvent) => {
                   <input required type="number" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] outline-none focus:border-red-600" />
                 </div>
 
-                {/* FUSHA E RIKTHYER: ALARMI PER STOK TE ULET */}
                 <div className="col-span-2 space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase">Alarmi për stok të ulët (Limiti manual)</label>
                   <input required type="number" value={formData.min_stock_level} onChange={(e) => setFormData({ ...formData, min_stock_level: e.target.value })} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] outline-none focus:border-red-600 transition-all font-black text-red-600" placeholder="Psh. 2" />
