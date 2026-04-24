@@ -5,17 +5,18 @@ import { Bell, Settings, HelpCircle, X, User, ShieldCheck, LogOut, ChevronRight,
 import { useNotifications } from '../../hooks/useNotification';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
+import { supabase } from '../../lib/supabase';
 
 export default function Navbar() {
   const { notifications, unreadCount, deleteNotification, markAsRead } = useNotifications();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false); // SHTUAR: State për profilin
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const profileRef = useRef<HTMLDivElement>(null); // SHTUAR: Ref për profilin
+  const profileRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -27,11 +28,19 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) setUser(user);
+      if (user) {
+        setUser(user);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        if (profile) setUserRole(profile.role);
+      }
     };
-    fetchUser();
+    fetchUserData();
   }, []);
 
   const handleLogout = async () => {
@@ -58,7 +67,7 @@ export default function Navbar() {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* NJOFTIMET (KODI YT) */}
+        {/* NJOFTIMET */}
         <div className="relative" ref={dropdownRef}>
           <div className="p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer group transition-all relative" onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
             <Bell size={20} className={`transition-colors ${isDropdownOpen ? 'text-red-600' : 'text-slate-400 group-hover:text-red-600'}`} />
@@ -84,18 +93,13 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* PROFILE SECTION (DINAMIKE DHE ME MODAL) */}
+        {/* PROFILE SECTION */}
         <div className="relative" ref={profileRef}>
-          <div 
-            onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-3 pl-4 border-l border-slate-100 ml-2 cursor-pointer group select-none"
-          >
+          <div onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-3 pl-4 border-l border-slate-100 ml-2 cursor-pointer group select-none">
             <div className="flex flex-col items-end hidden lg:flex">
-              <span className="text-xs font-black text-slate-900 italic uppercase tracking-tighter leading-none group-hover:text-red-600 transition-colors">
-                {userFullName}
-              </span>
+              <span className="text-xs font-black text-slate-900 italic uppercase tracking-tighter leading-none group-hover:text-red-600 transition-colors">{userFullName}</span>
               <span className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest flex items-center gap-1">
-                <ShieldCheck size={10} className="text-red-600" /> Admin
+                <ShieldCheck size={10} className="text-red-600" /> {userRole === 'admin' ? 'Admin' : 'Staff'}
               </span>
             </div>
             <div className="w-10 h-10 bg-slate-900 rounded-2xl flex items-center justify-center text-white text-xs font-black italic shadow-lg group-hover:scale-105 group-hover:rotate-3 transition-all border-2 border-white">
@@ -103,7 +107,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* PROFILE DROPDOWN WINDOW */}
+          {/* PROFILE DROPDOWN */}
           {isProfileOpen && (
             <div className="absolute right-0 mt-4 w-72 bg-white border border-slate-100 shadow-2xl rounded-[2.5rem] overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="bg-red-600 p-8 text-center text-white">
@@ -115,27 +119,27 @@ export default function Navbar() {
               </div>
 
               <div className="p-4 space-y-1">
-                <button 
-                  onClick={() => { setIsProfileOpen(false); router.push('/reset-password'); }}
-                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-slate-100 rounded-xl text-slate-500 group-hover:bg-red-50 group-hover:text-red-600 transition-colors">
-                      <Key size={16} />
+                {userRole === 'admin' && (
+                  <button onClick={() => { setIsProfileOpen(false); router.push('/dashboard/staff'); }} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all group">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-slate-100 rounded-xl text-slate-500 group-hover:bg-red-50 group-hover:text-red-600 transition-colors"><User size={16} /></div>
+                      <span className="text-[11px] font-black uppercase text-slate-600 italic">Menaxho Stafin</span>
                     </div>
+                    <ChevronRight size={14} className="text-slate-300" />
+                  </button>
+                )}
+                
+                <button onClick={() => { setIsProfileOpen(false); router.push('/reset-password'); }} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all group">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-slate-100 rounded-xl text-slate-500 group-hover:bg-red-50 group-hover:text-red-600 transition-colors"><Key size={16} /></div>
                     <span className="text-[11px] font-black uppercase text-slate-600 italic">Ndrysho Fjalëkalimin</span>
                   </div>
                   <ChevronRight size={14} className="text-slate-300" />
                 </button>
 
-                <button 
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 p-4 hover:bg-red-50 rounded-2xl transition-all group mt-2"
-                >
-                  {/* <div className="p-2 bg-red-100 rounded-xl text-red-600">
-                    <LogOut size={16} />
-                  </div>
-                  <span className="text-[11px] font-black uppercase text-red-600 italic">Dil nga Sistemi</span> */}
+                <button onClick={handleLogout} className="w-full flex items-center gap-3 p-4 hover:bg-red-50 rounded-2xl transition-all group mt-2">
+                  <div className="p-2 bg-red-100 rounded-xl text-red-600"><LogOut size={16} /></div>
+                  <span className="text-[11px] font-black uppercase text-red-600 italic">Dil nga Sistemi</span>
                 </button>
               </div>
             </div>
