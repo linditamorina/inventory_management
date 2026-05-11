@@ -11,6 +11,7 @@ import { useProducts, useCreateProduct, useDeleteProduct, useUpdateProduct } fro
 import { useProductMovements, useRecordMovement } from "../../../hooks/useStock";
 import { usePredictor } from "../../../hooks/usePredictor";
 import { useNotifications } from "../../../hooks/useNotification"; 
+import { useAboutCompany } from "../../../hooks/useAboutCompany"; // <--- IMPORTUAM HOOK-UN TËND
 
 import { useLanguage } from "../../../context/LanguageContext"; 
 import { supabase } from "../../../lib/supabase";
@@ -27,6 +28,7 @@ const translations = {
     showAll: "Show All",
     tableProdSku: "Product / SKU",
     tableCategory: "Category",
+    tablePrice: "Price",
     tableStock: "Stock",
     tableAIPred: "AI Prediction",
     tableActions: "Actions",
@@ -81,6 +83,7 @@ const translations = {
     showAll: "Trego të Gjitha",
     tableProdSku: "Produkt / SKU",
     tableCategory: "Kategoria",
+    tablePrice: "Çmimi",
     tableStock: "Stoku",
     tableAIPred: "Parashikimi AI",
     tableActions: "Veprime",
@@ -129,8 +132,11 @@ const translations = {
 export default function InventoryPage() {
   const { language } = useLanguage(); 
   const t = translations[language as keyof typeof translations] || translations.sq;
-
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState({ show: false, message: "" });
+  
+  // Përdorim hook-un tënd për të marrë Rolin dhe Valutën
+  const { aboutCompany, userRole } = useAboutCompany(); 
+  const [currencySymbol, setCurrencySymbol] = useState("€");
 
   const { data: products = [], isLoading } = useProducts();
   const createMutation = useCreateProduct();
@@ -173,20 +179,17 @@ export default function InventoryPage() {
     min_stock_level: "2",
   });
 
+  // LOGJIKA E SAKTË PËR VALUTËN DINAMIKE
   useEffect(() => {
-    const fetchUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-        if (profile) setUserRole(profile.role);
-      }
-    };
-    fetchUserData();
-  }, []);
+    if (aboutCompany?.currency) {
+      const c = aboutCompany.currency.toUpperCase();
+      if (c === 'USD') setCurrencySymbol('$');
+      else if (c === 'EUR') setCurrencySymbol('€');
+      else if (c === 'ALL') setCurrencySymbol('L');
+      else if (c === 'GBP') setCurrencySymbol('£');
+      else setCurrencySymbol(aboutCompany.currency);
+    }
+  }, [aboutCompany]);
 
   useEffect(() => {
     setAdjustmentData(prev => ({ ...prev, reason: prev.type === "IN" ? t.newSupply : t.sale }));
@@ -195,21 +198,20 @@ export default function InventoryPage() {
     }
   }, [language]);
 
-  // LOGJIKA E RE: Përkthyesi Dinamik i Kategorive
   const getStandardCategory = (cat: string) => {
     if (!cat) return 'UNKNOWN';
     const c = cat.toLowerCase();
     if (c === 'pajisje' || c === 'equipment') return 'EQUIPMENT';
     if (c === 'softuer' || c === 'software') return 'SOFTWARE';
     if (c === 'aksesorë' || c === 'accessories') return 'ACCESSORIES';
-    return cat; // Nëse ka kategori tjetër
+    return cat;
   };
 
   const displayCategory = (stdCat: string) => {
     if (stdCat === 'EQUIPMENT') return t.equipment;
     if (stdCat === 'SOFTWARE') return t.software;
     if (stdCat === 'ACCESSORIES') return t.accessories;
-    return stdCat; // Nëse ka kategori tjetër
+    return stdCat;
   };
 
   const triggerStockNotification = (name: string, quantity: number, minLevel: number) => {
@@ -242,7 +244,6 @@ export default function InventoryPage() {
 
   const openEditModal = (product: any) => {
     setEditingProduct(product);
-    // Sigurohemi që në editim i shfaqet gjuha aktuale
     const stdCat = getStandardCategory(product.category);
     setFormData({
       name: product.name || "",
@@ -261,39 +262,46 @@ export default function InventoryPage() {
     if (!adjustingProduct) return;
 
     const quantityChange = parseInt(adjustmentData.quantity);
-    
+    const currentStock = Number(adjustingProduct.quantity) || 0;
+
     if (isNaN(quantityChange) || quantityChange <= 0) {
-      alert(t.errorQty);
+      setErrorModal({ show: true, message: t.errorQty });
       return;
     }
 
-    const currentStock = adjustingProduct.quantity || 0;
-    const newTotalStock = adjustmentData.type === "IN" 
-      ? currentStock + quantityChange
-      : currentStock - quantityChange;
+    if (adjustmentData.type === "OUT") {
+      if (currentStock <= 0) {
+        setErrorModal({ 
+          show: true, 
+          message: language === 'en' ? "Stock is completely empty!" : "Stoku është plotësisht i zbrazët!" 
+        });
+        return;
+      }
+      if (quantityChange > currentStock) {
+        setErrorModal({ 
+          show: true, 
+          message: language === 'en' 
+            ? `Insufficient stock. You only have ${currentStock} units available.` 
+            : `Stok i pamjaftueshëm. Ju keni vetëm ${currentStock} njësi në gjendje.` 
+        });
+        return;
+      }
+    }
 
-    const finalStock = Math.max(0, newTotalStock);
+    const finalStock = Math.max(0, adjustmentData.type === "IN" ? currentStock + quantityChange : currentStock - quantityChange);
 
     recordMovement.mutate(
-      {
-        product_id: adjustingProduct.id,
-        type: adjustmentData.type as "IN" | "OUT",
-        quantity: quantityChange,
-        reason: adjustmentData.reason,
-      },
+      { product_id: adjustingProduct.id, type: adjustmentData.type as "IN" | "OUT", quantity: quantityChange, reason: adjustmentData.reason },
       {
         onSuccess: () => {
-          updateMutation.mutate({
-            id: adjustingProduct.id,
-            updates: { quantity: finalStock } 
-          }, {
+          updateMutation.mutate({ id: adjustingProduct.id, updates: { quantity: finalStock } }, {
             onSuccess: () => {
               triggerStockNotification(adjustingProduct.name, finalStock, adjustingProduct.min_stock_level);
+              setIsAdjustmentModalOpen(false);
+              setAdjustmentData({ type: "IN", quantity: "", reason: t.newSupply });
             }
           });
-          setIsAdjustmentModalOpen(false);
-          setAdjustmentData({ type: "IN", quantity: "", reason: t.newSupply });
-        },
+        }
       }
     );
   };
@@ -307,7 +315,7 @@ export default function InventoryPage() {
       quantity: parseInt(formData.quantity) || 0,
       min_stock_level: parseInt(formData.min_stock_level) || 0,
       description: formData.description,
-      category: formData.category, // Ruhet në gjuhën që është aktuale
+      category: formData.category,
     };
 
     if (editingProduct) {
@@ -343,18 +351,14 @@ export default function InventoryPage() {
     }
   };
 
-  // Filtrimi u bë Dinamik sipas 'Standard Category'
   const filteredProducts = products.filter((p: any) => {
     const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku?.toLowerCase().includes(searchTerm.toLowerCase());
-    
     const stdCat = getStandardCategory(p.category);
     const matchesCategory = categoryFilter === "ALL" || stdCat === categoryFilter;
-    
     const matchesLowStock = showLowStockOnly ? Number(p.quantity) <= Number(p.min_stock_level) : true;
     return matchesSearch && matchesCategory && matchesLowStock;
   });
 
-  // Marrim kategoritë standarde unike për Select-in lart
   const uniqueCategories = [...new Set(products.map((p: any) => getStandardCategory(p.category)))];
 
   const handleTypeChange = (newType: "IN" | "OUT") => {
@@ -390,10 +394,8 @@ export default function InventoryPage() {
         )}
       </div>
 
-      {/* SEARCH & FILTERS (VERSIONI I PËRMIRËSUAR) */}
+      {/* SEARCH & FILTERS */}
       <div className="flex flex-col lg:flex-row gap-3 bg-white p-2.5 rounded-[2rem] shadow-sm border border-slate-100 w-full relative z-10">
-        
-        {/* SEARCH BAR */}
         <div className="flex-1 relative group">
           <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
             <Search className="text-slate-400 group-focus-within:text-red-600 transition-colors" size={20} />
@@ -406,17 +408,13 @@ export default function InventoryPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
           {searchTerm && (
-            <button 
-              onClick={() => setSearchTerm('')}
-              className="absolute inset-y-0 right-5 flex items-center text-slate-400 hover:text-red-600 transition-colors"
-            >
+            <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-5 flex items-center text-slate-400 hover:text-red-600 transition-colors">
               <X size={18} strokeWidth={3} />
             </button>
           )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-          {/* KATEGORIA */}
           <div className="relative flex-shrink-0 w-full sm:w-56 group">
             <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
               <LayoutGrid className="text-slate-400 group-focus-within:text-red-600 transition-colors" size={18} />
@@ -436,31 +434,20 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* LOW STOCK BUTTON */}
           <button
             onClick={() => setShowLowStockOnly(!showLowStockOnly)}
             className={`relative overflow-hidden flex-shrink-0 w-full sm:w-auto px-8 py-4 rounded-[1.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 transition-all duration-300 border-2 ${
-              showLowStockOnly 
-                ? "bg-red-50 border-red-100 text-red-600" 
-                : "bg-white border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-900"
+              showLowStockOnly ? "bg-red-50 border-red-100 text-red-600" : "bg-white border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-900"
             }`}
           >
-            <AlertCircle 
-              size={18} 
-              className={`transition-transform duration-300 ${showLowStockOnly ? 'scale-110 text-red-600' : 'text-slate-400'}`} 
-              strokeWidth={showLowStockOnly ? 3 : 2}
-            /> 
+            <AlertCircle size={18} className={`transition-transform duration-300 ${showLowStockOnly ? 'scale-110 text-red-600' : 'text-slate-400'}`} strokeWidth={showLowStockOnly ? 3 : 2} /> 
             <span className="relative z-10">{showLowStockOnly ? t.showAll : t.lowStock}</span>
-            
-            {/* Pika pulsuese e alarmit kur është aktiv */}
-            {showLowStockOnly && (
-              <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-            )}
+            {showLowStockOnly && <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />}
           </button>
         </div>
       </div>
 
- {/* TABELA (VERSIONI PREMIUM SAAS) */}
+      {/* TABELA */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 overflow-hidden relative z-0 mt-4">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -468,6 +455,7 @@ export default function InventoryPage() {
               <tr className="bg-slate-50/80 border-b border-slate-100">
                 <th className="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.tableProdSku}</th>
                 <th className="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.tableCategory}</th>
+                <th className="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.tablePrice}</th>
                 <th className="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.tableStock}</th>
                 <th className="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.tableAIPred}</th>
                 <th className="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">{t.tableActions}</th>
@@ -476,14 +464,14 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-slate-50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="p-24 text-center">
+                  <td colSpan={6} className="p-24 text-center">
                     <Loader2 className="animate-spin mx-auto text-red-600 mb-4" size={32} />
                     <span className="font-black text-slate-300 uppercase tracking-[0.3em] text-xs">{t.loading}</span>
                   </td>
                 </tr>
               ) : filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-24 text-center">
+                  <td colSpan={6} className="p-24 text-center">
                     <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
                       <Package size={24} className="text-slate-300" />
                     </div>
@@ -497,8 +485,6 @@ export default function InventoryPage() {
                   
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/50 transition-all group italic font-medium">
-                      
-                      {/* PRODUKTI & SKU */}
                       <td className="p-6 px-8">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-red-50 group-hover:text-red-600 group-hover:border-red-100 transition-all shadow-sm">
@@ -510,15 +496,20 @@ export default function InventoryPage() {
                           </div>
                         </div>
                       </td>
-
-                      {/* KATEGORIA */}
                       <td className="p-6 px-8">
                         <span className="inline-flex items-center px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-sm text-[10px] font-black text-slate-500 uppercase tracking-widest">
                           {displayCategory(getStandardCategory(p.category))}
                         </span>
                       </td>
 
-                      {/* STOKU (Pill Badge) */}
+                      {/* ÇMIMI ME VALUTË DINAMIKE */}
+                      <td className="p-6 px-8">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 shadow-sm">
+                          <span className="text-[10px] text-slate-400 font-bold">{currencySymbol}</span>
+                          <span className="text-xs font-black text-slate-700">{p.price ? Number(p.price).toFixed(2) : "0.00"}</span>
+                        </div>
+                      </td>
+
                       <td className="p-6 px-8">
                         {isLowStock ? (
                           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 border border-red-100 text-red-600 font-black text-xs animate-pulse shadow-sm">
@@ -532,8 +523,6 @@ export default function InventoryPage() {
                           </div>
                         )}
                       </td>
-
-                      {/* PARASHIKIMI AI */}
                       <td className="p-6 px-8">
                         <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase shadow-sm border ${
                           status.color === 'red' ? 'bg-red-50 text-red-600 border-red-100' : 
@@ -544,17 +533,11 @@ export default function InventoryPage() {
                            {status.message}
                         </div>
                       </td>
-
-                      {/* VEPRIMET (Actions) */}
                       <td className="p-6 px-8 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                          
-                          {/* Butoni Hyrje/Dalje (Për të gjithë) */}
                           <button onClick={() => { setAdjustingProduct(p); setIsAdjustmentModalOpen(true); }} className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm group/btn" title={t.newStock}>
                             <ArrowUpDown size={16} strokeWidth={2.5} className="group-hover/btn:scale-110 transition-transform" />
                           </button>
-                          
-                          {/* KËTO BUTONA SHFAQEN VETËM PËR ADMIN */}
                           {userRole === 'admin' && (
                             <>
                               <button onClick={() => { setSelectedProductIdForHistory(p.id); setSelectedProductName(p.name); }} className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm group/btn" title={t.historyTitle}>
@@ -570,7 +553,6 @@ export default function InventoryPage() {
                           )}
                         </div>
                       </td>
-
                     </tr>
                   );
                 })
@@ -650,12 +632,10 @@ export default function InventoryPage() {
         </div>
       )}
 
-{/* MODAL SHTIM / EDITIM (VERSIONI PREMIUM PA SCROLL) */}
+      {/* MODAL SHTIM / EDITIM */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-white flex flex-col max-h-[90vh]">
-            
-            {/* Koka e Modalit */}
             <div className="bg-slate-900 p-6 sm:p-8 flex justify-between items-center text-white relative overflow-hidden flex-shrink-0">
               <div className="absolute -right-5 -top-10 text-white/5 rotate-12 pointer-events-none">
                 <Package size={120} strokeWidth={1} />
@@ -672,18 +652,14 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            {/* Forma (Me overflow-y-auto të fshehur vizualisht, vetëm nëse duhet për ekrane të vogla) */}
             <form onSubmit={handleSubmit} className="p-6 sm:p-8 flex-1 overflow-y-auto scrollbar-hide bg-white flex flex-col justify-between">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                
-                {/* Rreshti 1: EMRI dhe SKU */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                     <Type size={12} className="text-slate-300" /> {t.name}
                   </label>
                   <input required type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-bold text-slate-800 transition-all shadow-inner text-sm" 
-                    placeholder="Psh. Laptop HP ProBook"
                   />
                 </div>
 
@@ -693,38 +669,30 @@ export default function InventoryPage() {
                   </label>
                   <input required type="text" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} 
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-bold text-slate-800 transition-all shadow-inner uppercase text-sm" 
-                    placeholder="Psh. HP-1234"
                   />
                 </div>
 
-                {/* Rreshti 2: PËRSHKRIMI (Zë 2 kolona por me lartësi të vogël) */}
                 <div className="sm:col-span-2 space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                       <AlignLeft size={12} className="text-slate-300" /> {t.desc}
                     </label>
-                    <button type="button" onClick={generateAIDescription} disabled={isGeneratingAI} 
-                      className="text-[9px] flex items-center gap-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 px-3 py-1.5 rounded-lg font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all active:scale-95 disabled:opacity-50"
-                    >
+                    <button type="button" onClick={generateAIDescription} disabled={isGeneratingAI} className="text-[9px] flex items-center gap-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 px-3 py-1.5 rounded-lg font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all active:scale-95 disabled:opacity-50">
                       {isGeneratingAI ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} 
                       {isGeneratingAI ? "Menduar..." : "AI Text"}
                     </button>
                   </div>
                   <textarea rows={2} value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} 
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-medium italic text-slate-600 transition-all resize-none shadow-inner text-sm" 
-                    placeholder="Përshkruaj detajet..."
                   />
                 </div>
 
-                {/* Rreshti 3: KATEGORIA, ÇMIMI dhe SASIA */}
                 <div className="space-y-1.5 relative">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                     <LayoutGrid size={12} className="text-slate-300" /> {t.category}
                   </label>
                   <div className="relative group">
-                    <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} 
-                      className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-black uppercase text-[11px] tracking-widest text-slate-700 transition-all appearance-none cursor-pointer shadow-inner"
-                    >
+                    <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-black uppercase text-[11px] tracking-widest text-slate-700 transition-all appearance-none cursor-pointer shadow-inner">
                       <option value={t.equipment}>{t.equipment}</option>
                       <option value={t.software}>{t.software}</option>
                       <option value={t.accessories}>{t.accessories}</option>
@@ -739,52 +707,36 @@ export default function InventoryPage() {
                       <DollarSign size={12} className="text-slate-300" /> {t.price}
                     </label>
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">€</span>
+                      {/* SIMBOLI I VALUTËS DINAMIKE */}
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">{currencySymbol}</span>
                       <input required type="number" step="0.01" min="0" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} 
                         className="w-full pl-8 pr-3 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-black text-slate-800 transition-all shadow-inner text-sm" 
-                        placeholder="0.00"
                       />
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                       <Hash size={12} className="text-slate-300" /> {t.qty}
                     </label>
                     <input required type="number" min="0" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} 
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-black text-slate-800 transition-all shadow-inner text-sm" 
-                      placeholder="0"
                     />
                   </div>
                 </div>
 
-                {/* Rreshti 4: ALARMI I STOKUT (I rregulluar kompakt) */}
                 <div className="sm:col-span-2 mt-1 bg-red-50/50 p-4 rounded-2xl border border-red-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
                     <label className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-1.5 mb-1">
                       <AlertTriangle size={14} strokeWidth={3} /> {t.manualLimit}
                     </label>
-                    <p className="text-[9px] font-bold text-red-400/80 uppercase tracking-widest">
-                      Njofto kur sasia zbret poshtë këtij limiti.
-                    </p>
+                    <p className="text-[9px] font-bold text-red-400/80 uppercase tracking-widest">Njofto kur sasia zbret poshtë këtij limiti.</p>
                   </div>
-                  <input required type="number" min="0" value={formData.min_stock_level} onChange={(e) => setFormData({ ...formData, min_stock_level: e.target.value })} 
-                    className="w-full sm:w-24 px-4 py-2.5 bg-white border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-600/10 focus:border-red-400 font-black text-lg text-red-600 transition-all shadow-inner text-center" 
-                  />
+                  <input required type="number" min="0" value={formData.min_stock_level} onChange={(e) => setFormData({ ...formData, min_stock_level: e.target.value })} className="w-full sm:w-24 px-4 py-2.5 bg-white border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-600/10 focus:border-red-400 font-black text-lg text-red-600 transition-all shadow-inner text-center" />
                 </div>
-
               </div>
-
-              {/* BUTONI RUAJ */}
               <div className="pt-6 mt-auto">
-                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} 
-                  className="w-full bg-red-600 text-white font-black py-4 rounded-2xl hover:bg-slate-900 transition-all duration-300 uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[0_4px_20px_rgb(220,38,38,0.3)] hover:shadow-xl active:translate-y-0 disabled:opacity-70 disabled:hover:bg-red-600"
-                >
-                  {createMutation.isPending || updateMutation.isPending ? (
-                    <><Loader2 className="animate-spin" size={20} /> Duke u ruajtur...</>
-                  ) : (
-                    <><CheckCircle size={20} strokeWidth={3} /> {t.save}</>
-                  )}
+                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="w-full bg-red-600 text-white font-black py-4 rounded-2xl hover:bg-slate-900 transition-all duration-300 uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[0_4px_20px_rgb(220,38,38,0.3)] hover:shadow-xl active:translate-y-0 disabled:opacity-70 disabled:hover:bg-red-600">
+                  {createMutation.isPending || updateMutation.isPending ? <><Loader2 className="animate-spin" size={20} /> Duke u ruajtur...</> : <><CheckCircle size={20} strokeWidth={3} /> {t.save}</>}
                 </button>
               </div>
             </form>
@@ -802,6 +754,22 @@ export default function InventoryPage() {
               <button onClick={confirmDelete} className="bg-red-600 text-white py-5 rounded-2xl font-black uppercase text-xs">{t.yesDelete}</button>
               <button onClick={() => setDeleteConfirmOpen(false)} className="bg-slate-100 text-slate-600 py-5 rounded-2xl font-black uppercase text-xs">{t.cancel}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ERROR MODAL */}
+      {errorModal.show && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-10 text-center animate-in zoom-in-95 duration-200 border border-red-100">
+            <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-100">
+              <AlertCircle className="text-red-600" size={40} strokeWidth={2.5} />
+            </div>
+            <h3 className="text-xl font-black uppercase italic tracking-tighter text-slate-900 mb-4">{language === 'en' ? "Action Denied" : "Veprim i Refuzuar"}</h3>
+            <p className="text-slate-500 text-sm font-bold leading-relaxed mb-8 italic">{errorModal.message}</p>
+            <button onClick={() => setErrorModal({ show: false, message: "" })} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-red-600 transition-all shadow-lg active:scale-95">
+              {language === 'en' ? "I Understand" : "E Kuptova"}
+            </button>
           </div>
         </div>
       )}
