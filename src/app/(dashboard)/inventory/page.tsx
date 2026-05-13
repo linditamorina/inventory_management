@@ -512,18 +512,18 @@ export default function InventoryPage() {
 
                       <td className="p-6 px-8">
                         {isLowStock ? (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 border border-red-100 text-red-600 font-black text-xs animate-pulse shadow-sm">
+                          <div className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-red-50 border border-red-100 text-red-600 font-black text-xs animate-pulse shadow-sm">
                             <AlertTriangle size={14} strokeWidth={3} />
                             <span>{p.quantity} {t.pcs}</span>
                           </div>
                         ) : (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 font-black text-xs shadow-sm">
+                          <div className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 font-black text-xs shadow-sm">
                             <CheckCircle size={14} strokeWidth={3} />
                             <span>{p.quantity} {t.pcs}</span>
                           </div>
                         )}
                       </td>
-                      <td className="p-6 px-8">
+                      <td className="p-6 px-2">
                         <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase shadow-sm border ${
                           status.color === 'red' ? 'bg-red-50 text-red-600 border-red-100' : 
                           status.color === 'orange' ? 'bg-orange-50 text-orange-500 border-orange-100' : 
