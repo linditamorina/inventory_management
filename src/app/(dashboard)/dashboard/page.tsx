@@ -13,6 +13,7 @@ import { useAboutCompany } from '../../../hooks/useAboutCompany';
 export default function DashboardPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeUsersCount, setActiveUsersCount] = useState(0);
   const { t, language } = useLanguage();
   
   // Marrja e Valutës nga të dhënat e kompanisë
@@ -60,6 +61,13 @@ export default function DashboardPage() {
           .eq('admin_id', targetAdminId);
 
         if (data && !error) setProducts(data);
+
+      const { count: usersCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('admin_id', targetAdminId);
+
+      if (usersCount !== null) setActiveUsersCount(usersCount);
       } catch (err) {
         console.error("Error:", err);
       } finally {
@@ -94,6 +102,8 @@ export default function DashboardPage() {
     maximumFractionDigits: 2
   });
 
+  const active_users = activeUsersCount;
+
   const stats = [
     { label: t('total_items'), value: statsData.total, icon: Package, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: t('low_stock'), value: statsData.low, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
@@ -102,7 +112,7 @@ export default function DashboardPage() {
       value: `${currencySymbol}${formattedValue}`, // Këtu përdoret valuta!
       icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' 
     },
-    { label: t('active_users'), value: 1, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: t('active_users'), value: `${active_users}`, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
   ];
 
   const containerVariants: Variants = {
