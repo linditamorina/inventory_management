@@ -130,9 +130,15 @@ const translations = {
 };
 
 export default function InventoryPage() {
-  const { language } = useLanguage(); 
+  const { language } = useLanguage();
   const t = translations[language as keyof typeof translations] || translations.sq;
   const [errorModal, setErrorModal] = useState({ show: false, message: "" });
+  const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    supabase.from('categories').select('id, name').order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setDbCategories(data); });
+  }, []);
   
   // Përdorim hook-un tënd për të marrë Rolin dhe Valutën
   const { aboutCompany, userRole } = useAboutCompany(); 
@@ -384,7 +390,7 @@ export default function InventoryPage() {
           <button
             onClick={() => {
               setEditingProduct(null);
-              setFormData({ name: "", sku: "", category: t.equipment, price: "", quantity: "", description: "", min_stock_level: "2" });
+              setFormData({ name: "", sku: "", category: dbCategories[0]?.name || t.equipment, price: "", quantity: "", description: "", min_stock_level: "2" });
               setIsModalOpen(true);
             }}
             className="bg-red-600 text-white px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-slate-900 transition-all shadow-2xl shadow-red-600/30 active:scale-95 border-2 border-red-600"
@@ -693,9 +699,17 @@ export default function InventoryPage() {
                   </label>
                   <div className="relative group">
                     <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-black uppercase text-[11px] tracking-widest text-slate-700 transition-all appearance-none cursor-pointer shadow-inner">
-                      <option value={t.equipment}>{t.equipment}</option>
-                      <option value={t.software}>{t.software}</option>
-                      <option value={t.accessories}>{t.accessories}</option>
+                      {dbCategories.length > 0 ? (
+                        dbCategories.map((cat) => (
+                          <option key={cat.id} value={cat.name}>{cat.name}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value={t.equipment}>{t.equipment}</option>
+                          <option value={t.software}>{t.software}</option>
+                          <option value={t.accessories}>{t.accessories}</option>
+                        </>
+                      )}
                     </select>
                     <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-red-600 transition-transform duration-300 group-focus-within:-rotate-180" />
                   </div>

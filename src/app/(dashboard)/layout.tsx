@@ -1,18 +1,29 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Package } from 'lucide-react';
-import Navbar from '../../components/layout/Navbar'; 
+import { LayoutDashboard, Package, Tag } from 'lucide-react';
+import Navbar from '../../components/layout/Navbar';
+import { supabase } from '../../lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        supabase.from('profiles').select('role').eq('id', user.id).single()
+          .then(({ data }) => { if (data) setUserRole(data.role); });
+      }
+    });
+  }, []);
 
   return (
     <div className="flex h-screen bg-[#f8fafc]">
-      
-      {/* SIDEBAR I PASTRAR */}
+
+      {/* SIDEBAR */}
       <aside className="w-64 bg-[#1a1a1a] text-white flex flex-col shrink-0 italic z-[100]">
         <div className="p-6 flex items-center gap-3 border-b border-white/5">
           <div className="bg-red-600 p-2 rounded-lg text-white"><Package size={22} /></div>
@@ -26,9 +37,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/inventory" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/inventory' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
             <Package size={20} /> Inventory
           </Link>
-          <Link href="/categories" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/categories' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
-            <Package size={20} /> Categories
-          </Link>
+          {userRole === 'admin' && (
+            <Link href="/categories" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/categories' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+              <Tag size={20} /> Categories
+            </Link>
+          )}
         </nav>
       </aside>
 

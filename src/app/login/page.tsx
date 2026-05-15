@@ -53,7 +53,7 @@ export default function LoginPage() {
         {/* HEADER - Shtojmë 'relative' këtu që butoni të qëndrojë brenda */}
         <div className="bg-red-600 p-10 text-center flex flex-col items-center gap-4 relative">
           
-          {/* BUTONI I GJUHËS (Stili si te Register) */}
+          {/* BUTONI/ I GJUHËS (Stili si te Register) */}
           <button 
             type="button"
             onClick={toggleLanguage}
