@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  Package, Plus, Search, Filter, Edit3, Trash2, History, X, Loader2,
-  CheckCircle, AlertTriangle, Trash, Sparkles, LayoutGrid, AlertCircle,
-  ArrowUpRight, ArrowDownRight, ArrowUpDown, BrainCircuit, Timer, ChevronDown,
-  Tag, DollarSign, Hash, Type, AlignLeft
+  Package, Plus, Search, Edit3, Trash2, History, X, Loader2,
+  CheckCircle, AlertTriangle, Sparkles, LayoutGrid, AlertCircle,
+  ArrowUpRight, ArrowDownRight, ArrowUpDown, BrainCircuit, ChevronDown,
+  Tag, DollarSign, Hash, Type, AlignLeft, Download, FileText, FileSpreadsheet
 } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { useProducts, useCreateProduct, useDeleteProduct, useUpdateProduct } from "../../../hooks/useProducts";
 import { useProductMovements, useRecordMovement } from "../../../hooks/useStock";
 import { usePredictor } from "../../../hooks/usePredictor";
@@ -381,6 +383,250 @@ export default function InventoryPage() {
     });
   };
 
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  // ── IMPORT STATE ──
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importRows, setImportRows] = useState<any[]>([]);
+  const [importErrors, setImportErrors] = useState<Set<number>>(new Set());
+  const [isDragging, setIsDragging] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importDone, setImportDone] = useState<{ ok: number; fail: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setIsExportOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleExportCSV = () => {
+    setIsExportOpen(false);
+    const headers = [t.name, "SKU", t.category, `${t.price} (${currencySymbol})`, t.qty, "Min Stock"];
+    const rows = filteredProducts.map((p: any) => [
+      p.name || "",
+      p.sku || "",
+      displayCategory(getStandardCategory(p.category)),
+      Number(p.price || 0).toFixed(2),
+      p.quantity ?? 0,
+      p.min_stock_level ?? 0,
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob(["﻿" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `inventari_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPDF = () => {
+    setIsExportOpen(false);
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const today = new Date().toLocaleDateString(language === "sq" ? "sq-AL" : "en-GB", {
+      year: "numeric", month: "long", day: "numeric",
+    });
+
+    // ── HEADER BAND ──
+    doc.setFillColor(220, 38, 38);
+    doc.rect(0, 0, pageW, 22, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("IMS SYSTEM — INVENTORY REPORT", 12, 14);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(today, pageW - 12, 14, { align: "right" });
+
+    // ── SUBTITLE ──
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "italic");
+    doc.text(`${filteredProducts.length} ${language === "sq" ? "produkte" : "products"} — ${t.subtitle}`, 12, 30);
+
+    // ── TABLE ──
+    autoTable(doc, {
+      startY: 34,
+      head: [[t.name, "SKU", t.category, `${t.price} (${currencySymbol})`, t.qty, "Min", t.tableAIPred]],
+      body: filteredProducts.map((p: any) => {
+        const status = getStockStatus(p.id, p.quantity, p.min_stock_level);
+        return [
+          (p.name || "").toUpperCase(),
+          p.sku || "—",
+          displayCategory(getStandardCategory(p.category)),
+          `${currencySymbol} ${Number(p.price || 0).toFixed(2)}`,
+          p.quantity ?? 0,
+          p.min_stock_level ?? 0,
+          status.message,
+        ];
+      }),
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 8,
+        cellPadding: 4,
+      },
+      bodyStyles: { fontSize: 8, cellPadding: 3 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: 55 },
+        3: { halign: "right" },
+        4: { halign: "center" },
+        5: { halign: "center" },
+      },
+      didDrawCell: (data: any) => {
+        if (data.section === "body" && data.column.index === 4) {
+          const qty = Number(data.row.raw[4]);
+          const min = Number(data.row.raw[5]);
+          if (qty <= min) {
+            doc.setFillColor(254, 226, 226);
+            doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, "F");
+            doc.setTextColor(220, 38, 38);
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.text(String(qty), data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: "center" });
+          }
+        }
+      },
+      margin: { left: 12, right: 12 },
+    });
+
+    // ── FOOTER ──
+    const pageCount = (doc.internal as any).getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(12, doc.internal.pageSize.getHeight() - 12, pageW - 12, doc.internal.pageSize.getHeight() - 12);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(148, 163, 184);
+      doc.text("IMS System — Inventory Management", 12, doc.internal.pageSize.getHeight() - 7);
+      doc.text(`${i} / ${pageCount}`, pageW - 12, doc.internal.pageSize.getHeight() - 7, { align: "right" });
+    }
+
+    doc.save(`inventari_${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
+  // ── IMPORT FUNCTIONS ──
+  const parseCSV = (text: string) => {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return [];
+
+    // Skip header row, parse each data row
+    const rows = lines.slice(1).map((line, idx) => {
+      // Handle quoted fields
+      const cols: string[] = [];
+      let cur = "", inQuote = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuote = !inQuote; continue; }
+        if (ch === ',' && !inQuote) { cols.push(cur.trim()); cur = ""; continue; }
+        cur += ch;
+      }
+      cols.push(cur.trim());
+
+      return {
+        _row: idx,
+        name: cols[0] || "",
+        sku: cols[1] || "",
+        category: cols[2] || (dbCategories[0]?.name || t.equipment),
+        price: cols[3] || "0",
+        quantity: cols[4] || "0",
+        min_stock_level: cols[5] || "2",
+        description: cols[6] || "",
+      };
+    }).filter(r => r.name || r.sku);
+
+    // Validate
+    const errors = new Set<number>();
+    rows.forEach((r, i) => {
+      if (!r.name.trim()) errors.add(i);
+      if (!r.sku.trim()) errors.add(i);
+      if (isNaN(Number(r.price))) errors.add(i);
+      if (isNaN(Number(r.quantity))) errors.add(i);
+    });
+
+    setImportRows(rows);
+    setImportErrors(errors);
+  };
+
+  const handleFileSelect = (file: File) => {
+    if (!file || !file.name.endsWith(".csv")) return;
+    setImportDone(null);
+    const reader = new FileReader();
+    reader.onload = (e) => parseCSV(e.target?.result as string);
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const handleImportConfirm = async () => {
+    const validRows = importRows.filter((_, i) => !importErrors.has(i));
+    if (validRows.length === 0) return;
+    setIsImporting(true);
+    let ok = 0, fail = 0;
+
+    // Shto kategorite e reja automatikisht në tabelën categories
+    const uniqueCategories = [...new Set(validRows.map(r => r.category.trim()).filter(Boolean))];
+    const { data: existingCats } = await supabase.from('categories').select('name');
+    const existingNames = new Set((existingCats || []).map((c: any) => c.name.toLowerCase()));
+    const newCats = uniqueCategories.filter(c => !existingNames.has(c.toLowerCase()));
+    if (newCats.length > 0) {
+      await supabase.from('categories').insert(newCats.map(name => ({ name })));
+    }
+
+    for (const row of validRows) {
+      try {
+        await createMutation.mutateAsync({
+          name: row.name,
+          sku: row.sku,
+          category: row.category,
+          price: parseFloat(row.price) || 0,
+          quantity: parseInt(row.quantity) || 0,
+          min_stock_level: parseInt(row.min_stock_level) || 2,
+          description: row.description,
+        } as any);
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+
+    setIsImporting(false);
+    setImportDone({ ok, fail });
+    if (ok > 0) addNotification(`Import CSV: ${ok} produkte u shtuan me sukses.`);
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = `"Emri","SKU","Kategoria","Cmimi","Stoku","Min Stock","Pershkrimi"`;
+    const example = `"Samsung Galaxy S24","SKU-001","${dbCategories[0]?.name || 'Elektronike'}","999.00","10","2","Smartphone 256GB"`;
+    const blob = new Blob(["﻿" + headers + "\n" + example], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "template_produktet.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const resetImport = () => {
+    setImportRows([]);
+    setImportErrors(new Set());
+    setImportDone(null);
+    setIsImportModalOpen(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 italic relative min-h-screen font-medium">
       {/* HEADER */}
@@ -452,10 +698,71 @@ export default function InventoryPage() {
               showLowStockOnly ? "bg-red-50 border-red-100 text-red-600" : "bg-white border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-900"
             }`}
           >
-            <AlertCircle size={18} className={`transition-transform duration-300 ${showLowStockOnly ? 'scale-110 text-red-600' : 'text-slate-400'}`} strokeWidth={showLowStockOnly ? 3 : 2} /> 
+            <AlertCircle size={18} className={`transition-transform duration-300 ${showLowStockOnly ? 'scale-110 text-red-600' : 'text-slate-400'}`} strokeWidth={showLowStockOnly ? 3 : 2} />
             <span className="relative z-10">{showLowStockOnly ? t.showAll : t.lowStock}</span>
             {showLowStockOnly && <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />}
           </button>
+
+          {/* BUTONI EKSPORTO — vetëm admin */}
+          {userRole === 'admin' && <div className="relative flex-shrink-0" ref={exportRef}>
+            <button
+              onClick={() => setIsExportOpen(!isExportOpen)}
+              className="flex items-center gap-2 px-6 py-4 bg-white border-2 border-slate-200 hover:border-slate-900 text-slate-500 hover:text-slate-900 rounded-[1.5rem] font-black uppercase text-[10px] tracking-widest transition-all"
+            >
+              <Download size={16} strokeWidth={2.5} />
+              {language === "sq" ? "Eksporto" : "Export"}
+              <ChevronDown size={13} strokeWidth={3} className={`transition-transform duration-200 ${isExportOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {isExportOpen && (
+              <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-100 rounded-[1.5rem] shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="p-2 space-y-1">
+                  <button
+                    onClick={handleExportCSV}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 transition-colors group"
+                  >
+                    <div className="p-1.5 bg-emerald-100 group-hover:bg-emerald-200 rounded-lg text-emerald-600 transition-colors">
+                      <FileSpreadsheet size={14} strokeWidth={2.5} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[11px] font-black uppercase tracking-wider">CSV</p>
+                      <p className="text-[9px] text-slate-400 font-medium">Excel / Sheets</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={handleExportPDF}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl hover:bg-red-50 text-slate-700 hover:text-red-700 transition-colors group"
+                  >
+                    <div className="p-1.5 bg-red-100 group-hover:bg-red-200 rounded-lg text-red-600 transition-colors">
+                      <FileText size={14} strokeWidth={2.5} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[11px] font-black uppercase tracking-wider">PDF</p>
+                      <p className="text-[9px] text-slate-400 font-medium">Raport profesional</p>
+                    </div>
+                  </button>
+
+                  {userRole === 'admin' && (
+                    <>
+                      <div className="my-1 border-t border-slate-100" />
+                      <button
+                        onClick={() => { setIsExportOpen(false); setIsImportModalOpen(true); }}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition-colors group"
+                      >
+                        <div className="p-1.5 bg-blue-100 group-hover:bg-blue-200 rounded-lg text-blue-600 transition-colors">
+                          <FileSpreadsheet size={14} strokeWidth={2.5} />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[11px] font-black uppercase tracking-wider">Importo CSV</p>
+                          <p className="text-[9px] text-slate-400 font-medium">Shto produkte nga file</p>
+                        </div>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>}
         </div>
       </div>
 
@@ -776,6 +1083,160 @@ export default function InventoryPage() {
               <button onClick={confirmDelete} className="bg-red-600 text-white py-5 rounded-2xl font-black uppercase text-xs">{t.yesDelete}</button>
               <button onClick={() => setDeleteConfirmOpen(false)} className="bg-slate-100 text-slate-600 py-5 rounded-2xl font-black uppercase text-xs">{t.cancel}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── IMPORT MODAL ── */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[150] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+
+            {/* Header */}
+            <div className="bg-slate-900 p-6 flex justify-between items-center text-white flex-shrink-0">
+              <div>
+                <h2 className="text-xl font-black uppercase tracking-tighter flex items-center gap-3">
+                  <FileSpreadsheet className="text-blue-400" size={22} /> Importo Produkte nga CSV
+                </h2>
+                <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1">
+                  Shto produkte në masë duke ngarkuar një file CSV
+                </p>
+              </div>
+              <button onClick={resetImport} className="bg-white/10 p-3 rounded-2xl hover:bg-red-600 transition-all">
+                <X size={20} strokeWidth={3} />
+              </button>
+            </div>
+
+            <div className="p-6 flex-1 overflow-y-auto space-y-5">
+
+              {/* SUCCESS STATE */}
+              {importDone ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center">
+                    <CheckCircle className="text-emerald-600" size={40} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900">Import i Kryer!</h3>
+                    <p className="text-slate-500 mt-2 font-medium">
+                      <span className="text-emerald-600 font-black">{importDone.ok} produkte</span> u shtuan me sukses
+                      {importDone.fail > 0 && <>, <span className="text-red-600 font-black">{importDone.fail} dështuan</span></>}.
+                    </p>
+                  </div>
+                  <button onClick={resetImport} className="px-10 py-4 bg-slate-900 hover:bg-red-600 text-white font-black uppercase text-xs tracking-widest rounded-2xl transition-colors">
+                    Mbyll
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* TEMPLATE + UPLOAD */}
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    {/* Download template */}
+                    <button
+                      onClick={handleDownloadTemplate}
+                      className="flex items-center gap-3 px-5 py-3.5 bg-slate-50 hover:bg-slate-100 border-2 border-dashed border-slate-200 hover:border-slate-400 rounded-2xl transition-all group"
+                    >
+                      <div className="p-2 bg-emerald-100 rounded-xl text-emerald-600 group-hover:bg-emerald-200 transition-colors">
+                        <Download size={16} strokeWidth={2.5} />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">Shkarko Template</p>
+                        <p className="text-[9px] text-slate-400 font-medium">template_produktet.csv</p>
+                      </div>
+                    </button>
+
+                    {/* Drop zone */}
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileSelect(f); }}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`flex-1 flex items-center justify-center gap-3 py-4 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
+                        isDragging ? "border-blue-500 bg-blue-50 text-blue-600" : "border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 text-slate-400 hover:text-blue-600"
+                      }`}
+                    >
+                      <FileSpreadsheet size={20} strokeWidth={2} />
+                      <span className="text-[11px] font-black uppercase tracking-wider">
+                        {importRows.length > 0 ? `${importRows.length} rreshta të ngarkuar — klikoni për të ndryshuar` : "Tërhiq CSV këtu ose klikoni për të zgjedhur"}
+                      </span>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* LEGEND */}
+                  {importRows.length > 0 && importErrors.size > 0 && (
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-100 rounded-xl">
+                      <AlertTriangle size={14} className="text-red-600 flex-shrink-0" strokeWidth={2.5} />
+                      <p className="text-[10px] font-bold text-red-600 uppercase tracking-wide">
+                        {importErrors.size} rreshta me gabime (të kuqe) — nuk do të importohen. Fushat e detyrueshme: Emri, SKU.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* PREVIEW TABLE */}
+                  {importRows.length > 0 && (
+                    <div className="rounded-2xl border border-slate-100 overflow-hidden">
+                      <div className="bg-slate-50 px-5 py-3 flex items-center justify-between border-b border-slate-100">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                          Preview — {importRows.length - importErrors.size} të vlefshme / {importRows.length} gjithsej
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto max-h-64">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-900 text-white">
+                            <tr>
+                              {["#", "Emri", "SKU", "Kategoria", "Çmimi", "Stoku", "Min"].map(h => (
+                                <th key={h} className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importRows.map((row, i) => {
+                              const hasError = importErrors.has(i);
+                              return (
+                                <tr key={i} className={`border-t border-slate-50 ${hasError ? "bg-red-50" : i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}>
+                                  <td className={`px-4 py-2 font-bold ${hasError ? "text-red-500" : "text-slate-400"}`}>{i + 1}</td>
+                                  <td className={`px-4 py-2 font-bold ${hasError && !row.name ? "text-red-600" : "text-slate-800"}`}>{row.name || <span className="text-red-500 italic">Mungon</span>}</td>
+                                  <td className={`px-4 py-2 font-mono ${hasError && !row.sku ? "text-red-600 font-bold" : "text-slate-600"}`}>{row.sku || <span className="text-red-500 italic">Mungon</span>}</td>
+                                  <td className="px-4 py-2 text-slate-600">{row.category}</td>
+                                  <td className="px-4 py-2 text-slate-600">{row.price}</td>
+                                  <td className="px-4 py-2 text-slate-600">{row.quantity}</td>
+                                  <td className="px-4 py-2 text-slate-600">{row.min_stock_level}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer buttons */}
+            {!importDone && importRows.length > 0 && (
+              <div className="p-6 border-t border-slate-100 flex gap-3 flex-shrink-0">
+                <button onClick={resetImport} className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black rounded-2xl uppercase text-xs tracking-widest transition-all">
+                  Anulo
+                </button>
+                <button
+                  onClick={handleImportConfirm}
+                  disabled={isImporting || importRows.length === importErrors.size}
+                  className="flex-2 w-full flex items-center justify-center gap-3 py-4 bg-blue-600 hover:bg-slate-900 disabled:opacity-50 text-white font-black rounded-2xl uppercase text-xs tracking-widest transition-all shadow-lg"
+                >
+                  {isImporting
+                    ? <><Loader2 size={16} className="animate-spin" /> Duke importuar...</>
+                    : <><CheckCircle size={16} strokeWidth={3} /> Importo {importRows.length - importErrors.size} Produkte</>
+                  }
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
