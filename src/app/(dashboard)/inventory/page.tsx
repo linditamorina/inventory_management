@@ -304,9 +304,15 @@ export default function InventoryPage() {
             onSuccess: () => {
               triggerStockNotification(adjustingProduct.name, finalStock, adjustingProduct.min_stock_level);
               setIsAdjustmentModalOpen(false);
-              setAdjustmentData({ type: "IN", quantity: "", reason: t.newSupply });
+              setAdjustmentData({ type: userRole === 'admin' ? "IN" : "OUT", quantity: "", reason: userRole === 'admin' ? t.newSupply : t.sale });
+            },
+            onError: (error: any) => {
+              setErrorModal({ show: true, message: error.message });
             }
           });
+        },
+        onError: (error: any) => {
+          setErrorModal({ show: true, message: error.message });
         }
       }
     );
@@ -541,7 +547,7 @@ export default function InventoryPage() {
                       </td>
                       <td className="p-6 px-8 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => { setAdjustingProduct(p); setIsAdjustmentModalOpen(true); }} className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm group/btn" title={t.newStock}>
+                          <button onClick={() => { setAdjustingProduct(p); setAdjustmentData({ type: userRole === 'admin' ? 'IN' : 'OUT', quantity: '', reason: userRole === 'admin' ? t.newSupply : t.sale }); setIsAdjustmentModalOpen(true); }} className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm group/btn" title={t.newStock}>
                             <ArrowUpDown size={16} strokeWidth={2.5} className="group-hover/btn:scale-110 transition-transform" />
                           </button>
                           {userRole === 'admin' && (
@@ -619,7 +625,9 @@ export default function InventoryPage() {
             </div>
             <form onSubmit={handleAdjustmentSubmit} className="p-8 space-y-6">
               <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                <button type="button" onClick={() => handleTypeChange("IN")} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${adjustmentData.type === "IN" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400"}`}>{t.inPlus}</button>
+                {userRole === 'admin' && (
+                  <button type="button" onClick={() => handleTypeChange("IN")} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${adjustmentData.type === "IN" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400"}`}>{t.inPlus}</button>
+                )}
                 <button type="button" onClick={() => handleTypeChange("OUT")} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${adjustmentData.type === "OUT" ? "bg-white text-red-600 shadow-sm" : "text-slate-400"}`}>{t.outMinus}</button>
               </div>
               <div className="space-y-2">
