@@ -137,15 +137,16 @@ export default function LoginPage() {
             {loading ? <Loader2 className="animate-spin" size={20} /> : t('login_button')}
           </button>
 
-          {/* REGISTER LINK */}
-          <div className="pt-4 text-center border-t border-slate-100">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-              {t('no_account')} {' '}
-              <Link href="/register" className="text-red-600 hover:underline font-black">
-                {t('register_link')}
-              </Link>
-            </p>
-          </div>
+          {/* Register Link
+<div className="pt-4 text-center border-t border-slate-100">
+  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+    {t('no_account')} {' '}
+    <Link href="/register" className="text-red-600 hover:underline font-black">
+      {t('register_link')}
+    </Link>
+  </p>
+</div>
+*/}
         </form>
       </div>
     </div>
