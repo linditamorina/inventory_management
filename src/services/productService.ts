@@ -16,20 +16,9 @@ export const productService = {
 
   // CREATE: Shto një produkt të ri
   async createProduct(product: InsertProduct): Promise<Product> {
-    const { data: { user } } = await supabase.auth.getUser();
-    let companyId: string | null = null;
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('company_id')
-        .eq('id', user.id)
-        .maybeSingle();
-      companyId = profile?.company_id ?? null;
-    }
-
     const { data, error } = await supabase
       .from('products')
-      .insert({ ...product, ...(companyId ? { company_id: companyId } : {}) })
+      .insert(product)
       .select()
       .single();
 
