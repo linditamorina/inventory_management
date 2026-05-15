@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Package, Tag } from 'lucide-react';
 import Navbar from '../../components/layout/Navbar';
+import InventoryChat from '../../components/chat/InventoryChat';
 import { supabase } from '../../lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -49,9 +50,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         <Navbar />
         <main className="flex-1 overflow-y-auto p-10">
-          {children} 
+          {children}
         </main>
       </div>
+
+      {userRole === 'admin' && <InventoryChat />}
     </div>
   );
 }
