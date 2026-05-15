@@ -510,7 +510,7 @@ export default function InventoryPage() {
                         </div>
                       </td>
 
-                      <td className="p-6 px-8">
+                      <td className="p-6 px-6">
                         {isLowStock ? (
                           <div className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-red-50 border border-red-100 text-red-600 font-black text-xs animate-pulse shadow-sm">
                             <AlertTriangle size={14} strokeWidth={3} />
