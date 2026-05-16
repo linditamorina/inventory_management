@@ -132,6 +132,21 @@ export const translations = {
     cat_confirm_delete_btn: "Po, Fshije",
     cat_error_prefix: "Gabim: ",
     cat_error_delete: "Gabim gjatë fshirjes.",
+
+    // Reports
+    title: "RAPORTET ANALITIKE",
+    print: "Printo",
+    aiPredictor: "AI PARASHIKUESI",
+    loadingText: "Duke analizuar të dhënat...",
+    ready: "Gati për analizë. Klikoni butonin për të gjeneruar analizën.",
+    noData: "Nuk u gjetën të dhëna për këtë periudhë.",
+    generateBtn: "Analizo Stokun",
+    startDate: "Nga Data",
+    endDate: "Deri në Datën",
+    totalIn: "TOTAL HYRJE",
+    totalOut: "TOTAL DALJE",
+    chartTitle: "LËVIZJET E STOKUT",
+    units: "Njësi"
   },
   en: {
     // Login & Register
@@ -266,5 +281,20 @@ export const translations = {
     cat_confirm_delete_btn: "Yes, Delete",
     cat_error_prefix: "Error: ",
     cat_error_delete: "Error during deletion.",
+
+    // Reports
+    title: "REPORTS ANALYTICS",
+    print: "Print Report",
+    aiPredictor: "AI PREDICTOR",
+    loadingText: "Analyzing data...",
+    ready: "Ready for analysis. Click the button to generate insight.",
+    noData: "No data found for this period.",
+    generateBtn: "Generate Analysis",
+    startDate: "Start Date",
+    endDate: "End Date",
+    totalIn: "TOTAL STOCK IN",
+    totalOut: "TOTAL STOCK OUT",
+    chartTitle: "INVENTORY MOVEMENTS",
+    units: "Units"
   },
 };
