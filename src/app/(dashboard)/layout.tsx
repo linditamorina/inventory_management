@@ -42,6 +42,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Tag size={20} /> Categories
             </Link>
           )}
+          <Link href="/reports" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/reports' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+            <Package size={20} /> Reports
+          </Link>
         </nav>
       </aside>
 
