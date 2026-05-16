@@ -9,14 +9,16 @@ import {
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useQueryClient } from "@tanstack/react-query";
 import { useProducts, useCreateProduct, useDeleteProduct, useUpdateProduct } from "../../../hooks/useProducts";
 import { useProductMovements, useRecordMovement } from "../../../hooks/useStock";
 import { usePredictor } from "../../../hooks/usePredictor";
 import { useNotifications } from "../../../hooks/useNotification"; 
 import { useAboutCompany } from "../../../hooks/useAboutCompany"; // <--- IMPORTUAM HOOK-UN TËND
 
-import { useLanguage } from "../../../context/LanguageContext"; 
+import { useLanguage } from "../../../context/LanguageContext";
 import { supabase } from "../../../lib/supabase";
+import { getCategoryKey } from "../../../utils/categoryNormalizer";
 
 const translations = {
   en: {
@@ -146,6 +148,7 @@ export default function InventoryPage() {
   const { aboutCompany, userRole } = useAboutCompany(); 
   const [currencySymbol, setCurrencySymbol] = useState("€");
 
+  const queryClient = useQueryClient();
   const { data: products = [], isLoading } = useProducts();
   const createMutation = useCreateProduct();
   const deleteMutation = useDeleteProduct();
@@ -392,7 +395,7 @@ export default function InventoryPage() {
   const [importErrors, setImportErrors] = useState<Set<number>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [importDone, setImportDone] = useState<{ ok: number; fail: number } | null>(null);
+  const [importDone, setImportDone] = useState<{ ok: number; fail: number; skipped: number; reasons?: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -575,19 +578,60 @@ export default function InventoryPage() {
     if (validRows.length === 0) return;
     setIsImporting(true);
     let ok = 0, fail = 0;
+    const failReasons: string[] = [];
 
-    // Shto kategorite e reja automatikisht në tabelën categories
+    // Verifikojmë që sesioni është aktiv para insertit
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setIsImporting(false);
+      setImportDone({ ok: 0, fail: validRows.length, skipped: 0, reasons: ['Sesioni ka skaduar. Logohu sërish.'] });
+      return;
+    }
+
+    // Shto kategorite e reja automatikisht (me kontroll ndër-gjuhësor)
     const uniqueCategories = [...new Set(validRows.map(r => r.category.trim()).filter(Boolean))];
     const { data: existingCats } = await supabase.from('categories').select('name');
-    const existingNames = new Set((existingCats || []).map((c: any) => c.name.toLowerCase()));
-    const newCats = uniqueCategories.filter(c => !existingNames.has(c.toLowerCase()));
+    const existing = existingCats || [];
+
+    const existingKeyMap = new Map<string, string>(
+      existing.map((c: any) => [getCategoryKey(c.name), c.name])
+    );
+
+    const categoryRemap = new Map<string, string>();
+    const newCats: string[] = [];
+    for (const cat of uniqueCategories) {
+      const key = getCategoryKey(cat);
+      if (existingKeyMap.has(key)) {
+        categoryRemap.set(cat, existingKeyMap.get(key)!);
+      } else {
+        newCats.push(cat);
+        existingKeyMap.set(key, cat);
+        categoryRemap.set(cat, cat);
+      }
+    }
     if (newCats.length > 0) {
       await supabase.from('categories').insert(newCats.map(name => ({ name })));
     }
 
     for (const row of validRows) {
+      if (categoryRemap.has(row.category)) {
+        row.category = categoryRemap.get(row.category)!;
+      }
+    }
+
+    // Merr SKU-të ekzistuese për të shmangur duplikatet
+    const { data: existingProducts } = await supabase.from('products').select('sku');
+    const existingSkus = new Set((existingProducts || []).map((p: any) => p.sku?.toLowerCase()));
+
+    let skipped = 0;
+    for (const row of validRows) {
+      // Kalon SKU-të që ekzistojnë
+      if (existingSkus.has(row.sku?.toLowerCase())) {
+        skipped++;
+        continue;
+      }
       try {
-        await createMutation.mutateAsync({
+        const { error } = await supabase.from('products').insert({
           name: row.name,
           sku: row.sku,
           category: row.category,
@@ -595,16 +639,27 @@ export default function InventoryPage() {
           quantity: parseInt(row.quantity) || 0,
           min_stock_level: parseInt(row.min_stock_level) || 2,
           description: row.description,
-        } as any);
-        ok++;
-      } catch {
+        });
+        if (error) {
+          failReasons.push(`${row.name}: ${error.message}`);
+          fail++;
+        } else {
+          ok++;
+          existingSkus.add(row.sku?.toLowerCase());
+        }
+      } catch (e: any) {
+        failReasons.push(`${row.name}: ${e.message}`);
         fail++;
       }
     }
 
+
     setIsImporting(false);
-    setImportDone({ ok, fail });
-    if (ok > 0) addNotification(`Import CSV: ${ok} produkte u shtuan me sukses.`);
+    setImportDone({ ok, fail, skipped, reasons: failReasons });
+    if (ok > 0) {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addNotification(`Import CSV: ${ok} produkte u shtuan me sukses.`);
+    }
   };
 
   const handleDownloadTemplate = () => {
@@ -1111,17 +1166,49 @@ export default function InventoryPage() {
 
               {/* SUCCESS STATE */}
               {importDone ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center">
-                    <CheckCircle className="text-emerald-600" size={40} strokeWidth={2.5} />
+                <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
+                  <div className={`w-20 h-20 rounded-full flex items-center justify-center ${importDone.ok > 0 ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+                    <CheckCircle className={importDone.ok > 0 ? 'text-emerald-600' : 'text-amber-500'} size={40} strokeWidth={2.5} />
                   </div>
-                  <div>
-                    <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900">Import i Kryer!</h3>
-                    <p className="text-slate-500 mt-2 font-medium">
-                      <span className="text-emerald-600 font-black">{importDone.ok} produkte</span> u shtuan me sukses
-                      {importDone.fail > 0 && <>, <span className="text-red-600 font-black">{importDone.fail} dështuan</span></>}.
+                  <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-900">Import i Kryer!</h3>
+
+                  {/* Statistikat */}
+                  <div className="flex gap-3 w-full max-w-sm">
+                    <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-2xl p-3 text-center">
+                      <p className="text-2xl font-black text-emerald-600">{importDone.ok}</p>
+                      <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mt-0.5">U shtuan</p>
+                    </div>
+                    {importDone.skipped > 0 && (
+                      <div className="flex-1 bg-amber-50 border border-amber-100 rounded-2xl p-3 text-center">
+                        <p className="text-2xl font-black text-amber-500">{importDone.skipped}</p>
+                        <p className="text-[9px] font-black text-amber-400 uppercase tracking-widest mt-0.5">SKU identike</p>
+                      </div>
+                    )}
+                    {importDone.fail > 0 && (
+                      <div className="flex-1 bg-red-50 border border-red-100 rounded-2xl p-3 text-center">
+                        <p className="text-2xl font-black text-red-600">{importDone.fail}</p>
+                        <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mt-0.5">Dështuan</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {importDone.skipped > 0 && (
+                    <p className="text-[10px] text-amber-600 font-bold bg-amber-50 border border-amber-100 rounded-xl px-4 py-2 text-center">
+                      {importDone.skipped} produkte nuk u pranuan — SKU ekziston tashmë në sistem.
                     </p>
-                  </div>
+                  )}
+
+                  {importDone.fail > 0 && importDone.reasons && importDone.reasons.length > 0 && (
+                    <div className="w-full max-w-md text-left bg-red-50 border border-red-100 rounded-2xl p-4 space-y-1 max-h-32 overflow-y-auto">
+                      <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-2">Gabime:</p>
+                      {importDone.reasons.slice(0, 5).map((r, i) => (
+                        <p key={i} className="text-[10px] text-red-600 font-medium">{r}</p>
+                      ))}
+                      {importDone.reasons.length > 5 && (
+                        <p className="text-[10px] text-red-400 font-bold">...dhe {importDone.reasons.length - 5} të tjera</p>
+                      )}
+                    </div>
+                  )}
                   <button onClick={resetImport} className="px-10 py-4 bg-slate-900 hover:bg-red-600 text-white font-black uppercase text-xs tracking-widest rounded-2xl transition-colors">
                     Mbyll
                   </button>

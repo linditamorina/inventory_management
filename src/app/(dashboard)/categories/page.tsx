@@ -9,6 +9,7 @@ import {
   Plus, Pencil, Trash2, X, Save,
   Tag, Loader2, Search, AlertTriangle, Layers
 } from 'lucide-react';
+import { findDuplicateCategory } from '../../../utils/categoryNormalizer';
 
 export default function CategoriesPage() {
   const { t } = useLanguage();
@@ -61,8 +62,24 @@ export default function CategoriesPage() {
     fetchCategories();
   }, []);
 
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+
   const handleSave = async () => {
     if (!currentCategory.name.trim()) return;
+    setDuplicateError(null);
+
+    // Kontrollo duplikat (edhe ndër-gjuhësor)
+    const otherCategories = currentCategory.id
+      ? categories.filter(c => c.id !== currentCategory.id)
+      : categories;
+    const duplicate = findDuplicateCategory(currentCategory.name, otherCategories);
+    if (duplicate) {
+      setDuplicateError(
+        `Kategoria "${duplicate}" ekziston tashmë (e njëjta si "${currentCategory.name}").`
+      );
+      return;
+    }
+
     setIsSaving(true);
     try {
       if (currentCategory.id) {
@@ -226,15 +243,23 @@ export default function CategoriesPage() {
               </button>
             </div>
             <div className="p-8 space-y-6">
-              <input
-                type="text"
-                value={currentCategory.name}
-                onChange={(e) => setCurrentCategory({ ...currentCategory, name: e.target.value })}
-                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-slate-900 font-black text-lg uppercase"
-                placeholder={t('cat_input_placeholder')}
-                autoFocus
-              />
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={currentCategory.name}
+                  onChange={(e) => { setCurrentCategory({ ...currentCategory, name: e.target.value }); setDuplicateError(null); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                  className={`w-full p-5 bg-slate-50 border-2 rounded-2xl outline-none font-black text-lg uppercase transition-colors ${duplicateError ? 'border-red-400 bg-red-50' : 'border-slate-100 focus:border-slate-900'}`}
+                  placeholder={t('cat_input_placeholder')}
+                  autoFocus
+                />
+                {duplicateError && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
+                    <AlertTriangle size={13} className="text-red-500 flex-shrink-0" strokeWidth={2.5} />
+                    <p className="text-[10px] font-bold text-red-600">{duplicateError}</p>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleSave}
                 disabled={isSaving}
