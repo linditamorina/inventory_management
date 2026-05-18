@@ -588,6 +588,17 @@ export default function InventoryPage() {
       return;
     }
 
+    // Cakto admin_id korrekt (për staff → admin_id e shefit, për admin → user.id)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, admin_id')
+      .eq('id', session.user.id)
+      .single();
+    const importAdminId =
+      profile?.role === 'staff' && profile?.admin_id
+        ? profile.admin_id
+        : session.user.id;
+
     // Shto kategorite e reja automatikisht (me kontroll ndër-gjuhësor)
     const uniqueCategories = [...new Set(validRows.map(r => r.category.trim()).filter(Boolean))];
     const { data: existingCats } = await supabase.from('categories').select('name');
@@ -639,10 +650,21 @@ export default function InventoryPage() {
           quantity: parseInt(row.quantity) || 0,
           min_stock_level: parseInt(row.min_stock_level) || 2,
           description: row.description,
+          admin_id: importAdminId,
         });
         if (error) {
-          failReasons.push(`${row.name}: ${error.message}`);
-          fail++;
+          // SKU duplicate nga databaza (p.sh. produkte të vjetra pa admin_id) → skipped
+          const isDuplicate =
+            error.message?.includes('unique constraint') ||
+            error.message?.includes('duplicate key') ||
+            error.code === '23505';
+          if (isDuplicate) {
+            skipped++;
+            existingSkus.add(row.sku?.toLowerCase());
+          } else {
+            failReasons.push(`${row.name}: ${error.message}`);
+            fail++;
+          }
         } else {
           ok++;
           existingSkus.add(row.sku?.toLowerCase());

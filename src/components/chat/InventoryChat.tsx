@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { X, Send, Loader2, Bot, User, Sparkles, GripHorizontal } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -22,6 +22,9 @@ const SUGGESTIONS = {
   ],
 };
 
+const STORAGE_KEY = 'ims-chat-position';
+const BTN = 56; // button size px
+
 export default function InventoryChat() {
   const { language } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
@@ -30,51 +33,109 @@ export default function InventoryChat() {
   const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const chatRef = useRef<HTMLDivElement>(null);
 
-  const suggestions = SUGGESTIONS[language as keyof typeof SUGGESTIONS] || SUGGESTIONS.sq;
-  const isSq = language === 'sq';
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  // ── Position ──────────────────────────────────────────────
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const dragging = useRef(false);
+  const hasDragged = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
-    if (isOpen) setTimeout(() => inputRef.current?.focus(), 150);
-  }, [isOpen]);
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try { setPos(JSON.parse(saved)); return; } catch {}
+    }
+    setPos({ x: 24, y: window.innerHeight - BTN - 24 });
+  }, []);
+
+  const clamp = useCallback((x: number, y: number) => ({
+    x: Math.max(0, Math.min(window.innerWidth  - BTN, x)),
+    y: Math.max(0, Math.min(window.innerHeight - BTN, y)),
+  }), []);
+
+  const startDrag = (clientX: number, clientY: number) => {
+    if (!pos) return;
+    hasDragged.current = false;
+    dragging.current = true;
+    dragOffset.current = { x: clientX - pos.x, y: clientY - pos.y };
+  };
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (isOpen && chatRef.current && !chatRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      hasDragged.current = true;
+      setPos(clamp(e.clientX - dragOffset.current.x, e.clientY - dragOffset.current.y));
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [isOpen]);
+    const onMouseUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      setPos(p => { if (p) localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); return p; });
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!dragging.current) return;
+      hasDragged.current = true;
+      const t = e.touches[0];
+      setPos(clamp(t.clientX - dragOffset.current.x, t.clientY - dragOffset.current.y));
+    };
+    const onTouchEnd = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      setPos(p => { if (p) localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); return p; });
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [clamp]);
 
+  // ── Panel position (smart: opens toward center of screen) ─
+  const getPanelStyle = (): React.CSSProperties => {
+    if (!pos) return {};
+    const panelW = 370;
+    const gap = 12;
+    const openAbove = pos.y > window.innerHeight / 2;
+    const openLeft  = pos.x + panelW > window.innerWidth - 20;
+    return {
+      position: 'fixed',
+      width: panelW,
+      maxHeight: '78vh',
+      ...(openAbove
+        ? { bottom: window.innerHeight - pos.y + gap }
+        : { top: pos.y + BTN + gap }),
+      ...(openLeft
+        ? { right: window.innerWidth - pos.x - BTN }
+        : { left: pos.x }),
+      zIndex: 299,
+    };
+  };
+
+  // ── Scroll & focus ────────────────────────────────────────
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isLoading]);
+  useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 150); }, [isOpen]);
+
+  // ── Send ──────────────────────────────────────────────────
   const sendMessage = async (text?: string) => {
     const msg = (text || input).trim();
     if (!msg || isLoading) return;
     setInput('');
-
     const updated: Message[] = [...messages, { role: 'user', content: msg }];
     setMessages(updated);
     setIsLoading(true);
-
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/ai/inventory-chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
         },
-        body: JSON.stringify({
-          message: msg,
-          history: messages.map(m => ({ role: m.role, content: m.content })),
-          language,
-        }),
+        body: JSON.stringify({ message: msg, history: messages.map(m => ({ role: m.role, content: m.content })), language }),
       });
       const data = await res.json();
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Ndodhi një gabim.' }]);
@@ -85,31 +146,47 @@ export default function InventoryChat() {
     }
   };
 
+  const suggestions = SUGGESTIONS[language as keyof typeof SUGGESTIONS] || SUGGESTIONS.sq;
+  const isSq = language === 'sq';
+
+  if (!pos) return null;
+
   return (
-    <div ref={chatRef}>
-      {/* BUTONI LUNDRUES */}
+    <>
+      {/* ── FLOATING BUTTON ───────────────────────────────── */}
       <button
-        onClick={() => setIsOpen(o => !o)}
+        style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 300 }}
+        onMouseDown={e => { startDrag(e.clientX, e.clientY); e.preventDefault(); }}
+        onTouchStart={e => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
+        onClick={() => { if (!hasDragged.current) setIsOpen(o => !o); }}
         title="AI Inventory Assistant"
-        className="fixed bottom-6 left-6 z-[300] w-14 h-14 bg-red-600 hover:bg-slate-900 text-white rounded-2xl shadow-2xl shadow-red-600/40 flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95"
+        className={`w-14 h-14 text-white rounded-2xl shadow-2xl flex items-center justify-center select-none transition-colors duration-200
+          ${isOpen ? 'bg-slate-900' : 'bg-red-600 shadow-red-600/40'}
+          ${dragging.current ? 'cursor-grabbing' : 'cursor-grab hover:scale-110'}`}
       >
-        {isOpen
-          ? <X size={22} strokeWidth={3} />
-          : <Bot size={24} strokeWidth={2} />
-        }
+        {isOpen ? <X size={22} strokeWidth={3} /> : <Bot size={24} strokeWidth={2} />}
+        {/* Grip indicator */}
+        <span className="absolute -top-1.5 -right-1.5 bg-white rounded-full p-0.5 shadow-md pointer-events-none">
+          <GripHorizontal size={10} className="text-slate-400" />
+        </span>
       </button>
 
-      {/* PANELI I CHAT-IT */}
+      {/* ── CHAT PANEL ────────────────────────────────────── */}
       {isOpen && (
-        <div className="fixed bottom-24 left-6 z-[299] w-[370px] bg-white rounded-[2rem] shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200"
-          style={{ maxHeight: '78vh' }}
+        <div
+          style={getPanelStyle()}
+          className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200"
         >
-          {/* Header */}
-          <div className="bg-slate-900 px-5 py-4 flex items-center gap-3 text-white flex-shrink-0">
-            <div className="bg-red-600 p-2 rounded-xl">
+          {/* Header — drag handle */}
+          <div
+            className="bg-slate-900 px-5 py-4 flex items-center gap-3 text-white flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={e => { startDrag(e.clientX, e.clientY); e.preventDefault(); }}
+            onTouchStart={e => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
+          >
+            <div className="bg-red-600 p-2 rounded-xl pointer-events-none">
               <Bot size={18} strokeWidth={2.5} />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 pointer-events-none">
               <h3 className="font-black uppercase tracking-tighter text-sm flex items-center gap-2">
                 IMS Assistant
                 <span className="flex items-center gap-1 text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">
@@ -121,20 +198,28 @@ export default function InventoryChat() {
                 {isSq ? 'I fokusuar vetëm në inventarin tuaj' : 'Focused only on your inventory'}
               </p>
             </div>
-            {messages.length > 0 && (
+            <div className="flex items-center gap-2">
+              {messages.length > 0 && (
+                <button
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={() => setMessages([])}
+                  className="text-[9px] text-slate-500 hover:text-red-400 font-bold uppercase tracking-wider transition-colors"
+                >
+                  {isSq ? 'Pastro' : 'Clear'}
+                </button>
+              )}
               <button
-                onClick={() => setMessages([])}
-                className="text-[9px] text-slate-500 hover:text-red-400 font-bold uppercase tracking-wider transition-colors"
+                onMouseDown={e => e.stopPropagation()}
+                onClick={() => setIsOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 transition-colors"
               >
-                {isSq ? 'Pastro' : 'Clear'}
+                <X size={16} strokeWidth={2.5} />
               </button>
-            )}
+            </div>
           </div>
 
-          {/* Mesazhet */}
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/40 min-h-0">
-
-            {/* Gjendja fillestare */}
             {messages.length === 0 && (
               <div className="space-y-3">
                 <div className="flex items-start gap-2">
@@ -150,7 +235,6 @@ export default function InventoryChat() {
                     </p>
                   </div>
                 </div>
-
                 <div className="ml-7 space-y-1.5">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">
                     {isSq ? 'Pyetje të shpeshta:' : 'Common questions:'}
@@ -169,14 +253,10 @@ export default function InventoryChat() {
               </div>
             )}
 
-            {/* Mesazhet */}
             {messages.map((msg, i) => (
               <div key={i} className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div className={`p-1.5 rounded-lg flex-shrink-0 mb-0.5 ${msg.role === 'user' ? 'bg-red-600' : 'bg-slate-900'}`}>
-                  {msg.role === 'user'
-                    ? <User size={11} className="text-white" />
-                    : <Bot size={11} className="text-white" />
-                  }
+                  {msg.role === 'user' ? <User size={11} className="text-white" /> : <Bot size={11} className="text-white" />}
                 </div>
                 <div className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-xs font-medium leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
@@ -188,7 +268,6 @@ export default function InventoryChat() {
               </div>
             ))}
 
-            {/* Typing indicator */}
             {isLoading && (
               <div className="flex items-end gap-2">
                 <div className="bg-slate-900 p-1.5 rounded-lg flex-shrink-0 mb-0.5">
@@ -201,7 +280,6 @@ export default function InventoryChat() {
                 </div>
               </div>
             )}
-
             <div ref={bottomRef} />
           </div>
 
@@ -223,15 +301,12 @@ export default function InventoryChat() {
                 disabled={!input.trim() || isLoading}
                 className="p-2.5 bg-red-600 hover:bg-slate-900 disabled:opacity-40 disabled:hover:bg-red-600 text-white rounded-xl transition-all active:scale-95"
               >
-                {isLoading
-                  ? <Loader2 size={14} className="animate-spin" />
-                  : <Send size={14} strokeWidth={2.5} />
-                }
+                {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} strokeWidth={2.5} />}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
