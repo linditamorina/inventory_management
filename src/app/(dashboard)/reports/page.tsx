@@ -6,7 +6,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   Download, Sparkles, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown,
   AlertTriangle, CheckCircle, Zap, Target, BarChart2, Lightbulb, ShieldAlert,
-  ChevronDown, ChevronUp, Loader2, Package, Star
+  ChevronDown, ChevronUp, Loader2, Package, Star, History, Save, X, Trash2,
+  FileText, RefreshCw
 } from 'lucide-react';
 import { useLanguage } from "../../../context/LanguageContext";
 import { useAboutCompany } from "../../../hooks/useAboutCompany";
@@ -35,6 +36,23 @@ const translations = {
     stock_val: "Stock Value", action: "Action", strategy: "Strategy",
     why: "Why", how: "How to Maximize", expectedImpact: "Expected Impact",
     readyMsg: "Click Generate to get a full profitability analysis powered by AI.",
+    langChanged: "Language changed. Please regenerate the analysis.",
+    // History
+    historyTitle: "Report History",
+    historyEmpty: "No saved reports yet.",
+    historyPeriod: "Period",
+    historyHealth: "Health",
+    historyRevenue: "Revenue",
+    historyProducts: "Products",
+    historyDate: "Saved On",
+    historyDownload: "Download",
+    historyDelete: "Delete",
+    // Save modal
+    saveModalTitle: "Save this report?",
+    saveModalDesc: "The report will be saved to your history so you can access it later.",
+    saveAndDownload: "Yes, Save & Download",
+    onlyDownload: "No, just Download",
+    saving: "Saving...",
   },
   sq: {
     title: "Raportet & Analitika",
@@ -57,6 +75,23 @@ const translations = {
     stock_val: "Vlera Stoku", action: "Veprimi", strategy: "Strategjia",
     why: "Pse", how: "Si të Maksimizosh", expectedImpact: "Impakti i Pritur",
     readyMsg: "Kliko Gjenero për analizë të plotë profitabiliteti me AI.",
+    langChanged: "Gjuha u ndryshua. Ju lutemi rigjeneroni analizën.",
+    // History
+    historyTitle: "Historiku i Raporteve",
+    historyEmpty: "Nuk ka raporte të ruajtura ende.",
+    historyPeriod: "Periudha",
+    historyHealth: "Shëndeti",
+    historyRevenue: "Të Ardhura",
+    historyProducts: "Produkte",
+    historyDate: "Ruajtur Më",
+    historyDownload: "Shkarko",
+    historyDelete: "Fshi",
+    // Save modal
+    saveModalTitle: "Ruaj këtë raport?",
+    saveModalDesc: "Raporti do të ruhet në historik dhe mund ta aksesosh kur të duash.",
+    saveAndDownload: "Po, Ruaj & Shkarko",
+    onlyDownload: "Jo, vetëm Shkarko",
+    saving: "Duke ruajtur...",
   }
 };
 
@@ -104,6 +139,16 @@ export default function ReportsPage() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [langChanged, setLangChanged] = useState(false);
+  const prevLang = React.useRef(language);
+
+  // Save modal
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // History
+  const [historyRecords, setHistoryRecords] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const supabase = useMemo(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -134,6 +179,37 @@ export default function ReportsPage() {
       setCurrencySymbol(c === 'USD' ? '$' : c === 'GBP' ? '£' : c === 'ALL' ? 'L' : '€');
     }
   }, [aboutCompany]);
+
+  // Kur ndryshon gjuha, pastro analizën e vjetër
+  useEffect(() => {
+    if (prevLang.current !== language) {
+      prevLang.current = language;
+      if (analysis) {
+        setAnalysis(null);
+        setLangChanged(true);
+      }
+    }
+  }, [language, analysis]);
+
+  // Ngarko historikun e raporteve
+  const loadHistory = React.useCallback(async () => {
+    setIsLoadingHistory(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('report_history')
+        .select('*')
+        .eq('admin_id', user.id)
+        .order('created_at', { ascending: false });
+      setHistoryRecords(data || []);
+    } catch { setHistoryRecords([]); }
+    finally { setIsLoadingHistory(false); }
+  }, [supabase]);
+
+  useEffect(() => {
+    if (accessChecked) loadHistory();
+  }, [accessChecked, loadHistory]);
 
   useEffect(() => {
     const fetch = async () => {
@@ -215,6 +291,7 @@ export default function ReportsPage() {
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setAnalysis(null);
+    setLangChanged(false);
     try {
       const res = await fetch('/api/ai/profitability-analysis', {
         method: 'POST',
@@ -236,7 +313,37 @@ export default function ReportsPage() {
     }
   };
 
-  const handleDownloadPDF = () => {
+  const triggerDownload = () => {
+    if (rawData.length > 0 || analysis) {
+      setShowSaveModal(true);
+    } else {
+      executePDF();
+    }
+  };
+
+  const handleSaveReport = async () => {
+    setIsSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const title = `${aboutCompany?.company_name || 'Raporti'} — ${new Date(startDate).toLocaleDateString(language === 'sq' ? 'sq-AL' : 'en-US', { month: 'long', year: 'numeric' })}`;
+      await supabase.from('report_history').insert({
+        admin_id: user.id,
+        title,
+        period_start: startDate,
+        period_end: endDate,
+        health_status: analysis?.summary?.healthStatus || null,
+        total_revenue: analysis?.summary?.totalRevenue || null,
+        total_products: analysis?.summary?.totalProducts || productMovementsSummary.length,
+        analysis_data: analysis || null,
+      });
+      await loadHistory();
+    } catch (e) { console.error(e); }
+    finally { setIsSaving(false); }
+  };
+
+  const executePDF = (overrideAnalysis?: any) => {
+    const usedAnalysis = overrideAnalysis !== undefined ? overrideAnalysis : analysis;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -295,16 +402,16 @@ export default function ReportsPage() {
       },
     });
 
-    if (analysis?.summary) {
+    if (usedAnalysis?.summary) {
       const y = (doc as any).lastAutoTable.finalY + 14;
       doc.setFontSize(11); doc.setTextColor(15, 23, 42); doc.setFont('helvetica', 'bold');
       doc.text('SUMMARY EKZEKUTIV (AI)', 14, y);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
-      doc.text(`Shëndeti: ${analysis.summary.healthStatus} — ${analysis.summary.healthReason || ''}`, 14, y + 7);
-      doc.text(`Të ardhura: ${analysis.summary.totalRevenue} | Vlera stoku: ${analysis.summary.totalStockValue}`, 14, y + 13);
+      doc.text(`Shëndeti: ${usedAnalysis.summary.healthStatus} — ${usedAnalysis.summary.healthReason || ''}`, 14, y + 7);
+      doc.text(`Të ardhura: ${usedAnalysis.summary.totalRevenue} | Vlera stoku: ${usedAnalysis.summary.totalStockValue}`, 14, y + 13);
     }
 
-    const finalY2 = (doc as any).lastAutoTable.finalY + (analysis ? 30 : 10);
+    const finalY2 = (doc as any).lastAutoTable.finalY + (usedAnalysis ? 30 : 10);
     doc.setDrawColor(226, 232, 240);
     doc.line(30, finalY2 + 40, 80, finalY2 + 40);
     doc.line(pageWidth - 80, finalY2 + 40, pageWidth - 30, finalY2 + 40);
@@ -327,7 +434,7 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl md:text-3xl font-black italic tracking-tighter text-slate-900 uppercase">{t.title}</h1>
-        <button onClick={() => handleDownloadPDF()} className="flex items-center gap-2 bg-red-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-900 shadow-xl transition-all active:scale-95">
+        <button onClick={triggerDownload} className="flex items-center gap-2 bg-red-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-900 shadow-xl transition-all active:scale-95">
           <Download size={16} strokeWidth={2.5} /> {t.downloadPDF}
         </button>
       </div>
@@ -407,6 +514,14 @@ export default function ReportsPage() {
         </div>
 
         <div className="p-6">
+          {/* Language changed notice */}
+          {langChanged && !analysis && !isAnalyzing && (
+            <div className="mb-4 flex items-center gap-3 px-5 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
+              <RefreshCw size={16} className="text-amber-500 flex-shrink-0" />
+              <p className="text-xs font-bold text-amber-700">{t.langChanged}</p>
+            </div>
+          )}
+
           {/* Initial state */}
           {!analysis && !isAnalyzing && !analyzeError && (
             <div className="py-12 flex flex-col items-center gap-3 text-slate-300">
@@ -680,6 +795,138 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+
+      {/* ── HISTORY OF REPORTS ─────────────────────────────── */}
+      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+        <div className="bg-slate-900 px-6 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-slate-700 p-2 rounded-xl"><History size={18} className="text-white" /></div>
+            <div>
+              <h2 className="text-white font-black uppercase tracking-tight text-sm">{t.historyTitle}</h2>
+              <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-0.5">
+                {historyRecords.length} {language === 'sq' ? 'raporte të ruajtura' : 'saved reports'}
+              </p>
+            </div>
+          </div>
+          <button onClick={loadHistory} className="p-2 rounded-xl hover:bg-white/10 transition-colors" title="Refresh">
+            <RefreshCw size={15} className={`text-slate-400 ${isLoadingHistory ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {isLoadingHistory ? (
+            <div className="py-10 flex items-center justify-center gap-3 text-slate-300">
+              <Loader2 size={20} className="animate-spin" />
+              <span className="text-xs font-bold uppercase tracking-widest">{t.loading}</span>
+            </div>
+          ) : historyRecords.length === 0 ? (
+            <div className="py-12 flex flex-col items-center gap-3 text-slate-300">
+              <FileText size={36} strokeWidth={1} />
+              <p className="text-sm font-bold text-center">{t.historyEmpty}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-3 px-3 font-black text-[10px] text-slate-400 uppercase tracking-widest">{t.historyDate}</th>
+                    <th className="text-left py-3 px-3 font-black text-[10px] text-slate-400 uppercase tracking-widest">{t.historyPeriod}</th>
+                    <th className="text-left py-3 px-3 font-black text-[10px] text-slate-400 uppercase tracking-widest">{t.historyHealth}</th>
+                    <th className="text-left py-3 px-3 font-black text-[10px] text-slate-400 uppercase tracking-widest">{t.historyRevenue}</th>
+                    <th className="text-center py-3 px-3 font-black text-[10px] text-slate-400 uppercase tracking-widest">{t.historyProducts}</th>
+                    <th className="text-center py-3 px-3 font-black text-[10px] text-slate-400 uppercase tracking-widest">PDF</th>
+                    <th className="text-center py-3 px-3 font-black text-[10px] text-slate-400 uppercase tracking-widest"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyRecords.map((rec: any) => {
+                    const hs = rec.health_status ? (HEALTH_STYLES[rec.health_status] || HEALTH_STYLES['Needs Improvement']) : null;
+                    return (
+                      <tr key={rec.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3 px-3 font-bold text-slate-500">
+                          {new Date(rec.created_at).toLocaleDateString(language === 'sq' ? 'sq-AL' : 'en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="py-3 px-3 font-bold text-slate-700">
+                          {new Date(rec.period_start).toLocaleDateString(language === 'sq' ? 'sq-AL' : 'en-US', { day: '2-digit', month: 'short' })}
+                          {' — '}
+                          {new Date(rec.period_end).toLocaleDateString(language === 'sq' ? 'sq-AL' : 'en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="py-3 px-3">
+                          {hs ? (
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black ${hs.bg} ${hs.text} border ${hs.border}`}>
+                              {hs.icon} {rec.health_status}
+                            </span>
+                          ) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-3 px-3 font-black text-slate-800">{rec.total_revenue || '—'}</td>
+                        <td className="py-3 px-3 text-center font-bold text-slate-500">{rec.total_products ?? '—'}</td>
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            onClick={() => executePDF(rec.analysis_data)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-slate-900 text-white font-black text-[10px] uppercase rounded-lg transition-all active:scale-95"
+                          >
+                            <Download size={11} /> PDF
+                          </button>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            onClick={async () => {
+                              await supabase.from('report_history').delete().eq('id', rec.id);
+                              await loadHistory();
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── SAVE MODAL ─────────────────────────────────────── */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm p-8 flex flex-col gap-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="bg-slate-900 p-3 rounded-2xl">
+                <Save size={22} className="text-white" />
+              </div>
+              <button onClick={() => setShowSaveModal(false)} className="p-2 rounded-xl hover:bg-slate-100 transition-colors">
+                <X size={18} className="text-slate-400" />
+              </button>
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">{t.saveModalTitle}</h3>
+              <p className="text-xs text-slate-400 font-medium mt-1 leading-relaxed">{t.saveModalDesc}</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                disabled={isSaving}
+                onClick={async () => {
+                  await handleSaveReport();
+                  setShowSaveModal(false);
+                  executePDF();
+                }}
+                className="w-full py-3.5 bg-slate-900 hover:bg-red-600 text-white font-black uppercase text-xs tracking-widest rounded-2xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSaving ? <><Loader2 size={14} className="animate-spin" /> {t.saving}</> : <><Save size={14} /> {t.saveAndDownload}</>}
+              </button>
+              <button
+                onClick={() => { setShowSaveModal(false); executePDF(); }}
+                className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black uppercase text-xs tracking-widest rounded-2xl transition-all active:scale-95"
+              >
+                {t.onlyDownload}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
