@@ -1,7 +1,15 @@
 'use client';
 
 import React from 'react';
-import { LayoutDashboard, Package, ShoppingCart, Truck, BarChart3, Building } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Package, 
+  BarChart3, 
+  Tag, 
+  Users,
+  FileText,
+  History   
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLanguage } from '../../context/LanguageContext';
@@ -10,14 +18,15 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { t } = useLanguage();
 
-  // Ruajmë vetëm çelësat e përkthimit (Translation Keys)
+  // Të gjitha menutë e sistemit të përfshira këtu
   const menuItems = [
     { icon: LayoutDashboard, label: 'sidebar_dashboard', path: '/dashboard' },
     { icon: Package, label: 'sidebar_inventory', path: '/inventory' },
-    { icon: ShoppingCart, label: 'sidebar_sales', path: '/sales' },
-    { icon: Truck, label: 'sidebar_purchases', path: '/purchases' },
+    { icon: Tag, label: 'sidebar_categories', path: '/categories' },
+    { icon: Users, label: 'sidebar_staff', path: '/dashboard/staff' }, 
+    { icon: FileText, label: 'sidebar_invoices', path: '/invoices' }, 
+    { icon: History, label: 'sidebar_invoices_history', path: '/invoices/history' }, 
     { icon: BarChart3, label: 'sidebar_reports', path: '/reports' },
-    { icon: Building, label: 'about_company', path: '/dashboard/about-company' },
   ];
 
   return (
@@ -26,15 +35,27 @@ export default function Sidebar() {
         <div className="bg-red-600 p-2 rounded-lg">
           <Package size={24} />
         </div>
-        {/* Titulli i Sidebar-it */}
         <span className="font-bold text-xl tracking-tight">
-          {t('sidebar_app_name')}
+          {t('sidebar_app_name') || 'INVENTORY'}
         </span>
       </div>
       
       <nav className="flex-1 px-4 space-y-2 mt-4">
         {menuItems.map((item) => {
           const isActive = pathname === item.path;
+          
+          // Logjika mbrojtëse për të shfaqur emrat në Shqip nëse mungojnë përkthimet json
+          let translatedLabel = t(item.label);
+          if (!translatedLabel || translatedLabel === item.label) {
+            if (item.label === 'sidebar_dashboard') translatedLabel = 'Dashboard';
+            if (item.label === 'sidebar_inventory') translatedLabel = 'Inventory';
+            if (item.label === 'sidebar_categories') translatedLabel = 'Categories';
+            if (item.label === 'sidebar_staff') translatedLabel = 'Staff';
+            if (item.label === 'sidebar_reports') translatedLabel = 'Reports';
+            if (item.label === 'sidebar_invoices') translatedLabel = 'Faturë e Re';
+            if (item.label === 'sidebar_invoice_history') translatedLabel = 'Historiku i Faturave';
+          }
+
           return (
             <Link 
               href={item.path} 
@@ -46,8 +67,7 @@ export default function Sidebar() {
               }`}
             >
               <item.icon size={20} />
-              {/* Përkthimi dinamik ndodh këtu */}
-              <span className="font-medium">{t(item.label)}</span>
+              <span className="font-medium">{translatedLabel}</span>
             </Link>
           );
         })}
