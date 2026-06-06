@@ -8,34 +8,49 @@ export const useNotifications = () => {
 
   // 1. Gjejmë automatikisht se cilës kompani i përket ky përdorues (Admin ose Staff)
   useEffect(() => {
+    let isMounted = true; // Parandalon thirrjet e dyfishta paralele
+
     const fetchAdminId = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) return;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, admin_id')
-        .eq('id', user.id)
-        .single();
+        if (!isMounted) return;
 
-      if (profile && profile.role === 'staff' && profile.admin_id) {
-        setTargetAdminId(profile.admin_id);
-      } else {
-        setTargetAdminId(user.id);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, admin_id')
+          .eq('id', user.id)
+          .single();
+
+        if (!isMounted) return;
+
+        if (profile && profile.role === 'staff' && profile.admin_id) {
+          setTargetAdminId(profile.admin_id);
+        } else {
+          setTargetAdminId(user.id);
+        }
+      } catch (err) {
+        console.error("Gabim gjatë vërtetimit të përdoruesit:", err);
       }
     };
+
     fetchAdminId();
+
+    return () => {
+      isMounted = false; // Pastron thirrjen kur komponenti unmount-ohet ose rifreskohet
+    };
   }, []);
 
   // 2. Leximi i njoftimeve TË FILTRUARA vetëm për këtë kompani
   const { data: notifications = [] } = useQuery({
-    queryKey: ['notifications', targetAdminId], // Izolojmë cache-in
-    enabled: !!targetAdminId, // Mos kërko asgjë nëse s'kemi gjetur akoma ID-në
+    queryKey: ['notifications', targetAdminId],
+    enabled: !!targetAdminId, 
     queryFn: async () => {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('admin_id', targetAdminId) // <-- FILTRI MAGJIK: Jep vetëm të miat!
+        .eq('admin_id', targetAdminId)
         .order('created_at', { ascending: false });
       
       if (error) {
@@ -48,16 +63,16 @@ export const useNotifications = () => {
 
   // 3. Logjika Real-time TË FILTRUARA vetëm për këtë kompani
   useEffect(() => {
-    if (!targetAdminId) return; // Nëse s'ka ID, mos e hap kanalin
+    if (!targetAdminId) return;
 
     const channel = supabase
-      .channel(`notifications-${targetAdminId}`) // Kanal unik për çdo biznes
+      .channel(`notifications-${targetAdminId}`)
       .on('postgres_changes', 
         { 
           event: '*', 
           schema: 'public', 
           table: 'notifications',
-          filter: `admin_id=eq.${targetAdminId}` // <-- FILTRI I ZILES: Bjer vetëm për mua!
+          filter: `admin_id=eq.${targetAdminId}`
         }, 
         (payload) => {
           console.log("Realtime event u kap për këtë kompani:", payload);
@@ -125,4 +140,4 @@ export const useNotifications = () => {
     markAsRead,
     markAllAsRead 
   };
-}
+};

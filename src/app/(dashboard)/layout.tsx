@@ -3,7 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Package, Tag, User, BarChart3 } from 'lucide-react'; // Shtova BarChart3 për Reports
+import { 
+  LayoutDashboard, 
+  Package, 
+  Tag, 
+  User, 
+  BarChart3, 
+  FileText, // Ikonë e re për faturat aktuale
+  History   // Ikonë e re për historikun
+} from 'lucide-react'; 
 import Navbar from '../../components/layout/Navbar';
 import InventoryChat from '../../components/chat/InventoryChat';
 import { supabase } from '../../lib/supabase';
@@ -45,6 +53,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Reports - Të gjithë */}
           <Link href="/reports" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/reports' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
             <BarChart3 size={20} /> Reports
+          </Link>
+
+          {/* Invoices - Të gjithë */}
+          <Link href="/invoices" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/invoices' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+            <FileText size={20} /> Invoices
+          </Link>
+
+          {/* invoices/history - Të gjithë */}
+          <Link href="/invoices/history" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/invoices/history' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+            <History size={20} /> Invoice History
           </Link>
 
           {/* Admin Only Links */}
