@@ -51,9 +51,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </Link>
 
           {/* Reports - Të gjithë */}
-          <Link href="/reports" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/reports' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+          {/* <Link href="/reports" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/reports' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
             <BarChart3 size={20} /> Reports
-          </Link>
+          </Link> */}
 
           {/* Invoices - Të gjithë */}
           <Link href="/invoices" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/invoices' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
@@ -70,6 +70,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <>
               <Link href="/categories" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/categories' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
                 <Tag size={20} /> Categories
+              </Link>
+
+              <Link href="/reports" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/reports' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+                <BarChart3 size={20} /> Reports
               </Link>
 
               <Link href="/dashboard/staff" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/dashboard/staff' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
