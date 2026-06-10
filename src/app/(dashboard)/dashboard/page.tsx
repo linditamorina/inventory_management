@@ -185,7 +185,7 @@ export default function DashboardPage() {
                 <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: '800', textTransform: 'uppercase' }} />
               </PieChart>
             </ResponsiveContainer>
-            <div className="absolute top-[42%] left-[50%] translate-x-[-50%] translate-y-[-50%] text-center pointer-events-none">
+            <div className="absolute top-[46%] left-[50%] -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
               <span className="block text-2xl font-black italic text-slate-900 leading-none">{statsData.total}</span>
               <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Total</p>
             </div>

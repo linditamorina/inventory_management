@@ -5,8 +5,10 @@ import {
   Package, Plus, Search, Edit3, Trash2, History, X, Loader2,
   CheckCircle, AlertTriangle, Sparkles, LayoutGrid, AlertCircle,
   ArrowUpRight, ArrowDownRight, ArrowUpDown, BrainCircuit, ChevronDown,
-  Tag, DollarSign, Hash, Type, AlignLeft, Download, FileText, FileSpreadsheet
+  Tag, DollarSign, Hash, Type, AlignLeft, Download, FileText, FileSpreadsheet,
+  ShoppingCart,
 } from "lucide-react";
+import { useOrder } from "../../../context/OrderContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useQueryClient } from "@tanstack/react-query";
@@ -156,7 +158,8 @@ export default function InventoryPage() {
   const recordMovement = useRecordMovement();
   
   const { getStockStatus } = usePredictor();
-  const { addNotification } = useNotifications(); 
+  const { addNotification } = useNotifications();
+  const { addToCart, cartCount, openCart } = useOrder();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -931,9 +934,20 @@ export default function InventoryPage() {
                       </td>
                       <td className="p-6 px-8 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => { setAdjustingProduct(p); setAdjustmentData({ type: userRole === 'admin' ? 'IN' : 'OUT', quantity: '', reason: userRole === 'admin' ? t.newSupply : t.sale }); setIsAdjustmentModalOpen(true); }} className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm group/btn" title={t.newStock}>
-                            <ArrowUpDown size={16} strokeWidth={2.5} className="group-hover/btn:scale-110 transition-transform" />
+                          {/* SHTO NË POROSI — të gjithë */}
+                          <button
+                            onClick={() => addToCart(p)}
+                            disabled={Number(p.quantity) <= 0}
+                            className="p-3 bg-red-600 border border-red-600 text-white rounded-xl hover:bg-slate-900 hover:border-slate-900 transition-all shadow-sm group/btn disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-red-600 disabled:hover:border-red-600"
+                            title={language === 'sq' ? 'Shto në Porosi' : 'Add to Order'}
+                          >
+                            <ShoppingCart size={16} strokeWidth={2.5} className="group-hover/btn:scale-110 transition-transform" />
                           </button>
+                          {userRole === 'admin' && (
+                            <button onClick={() => { setAdjustingProduct(p); setAdjustmentData({ type: 'IN', quantity: '', reason: t.newSupply }); setIsAdjustmentModalOpen(true); }} className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm group/btn" title={t.newStock}>
+                              <ArrowUpDown size={16} strokeWidth={2.5} className="group-hover/btn:scale-110 transition-transform" />
+                            </button>
+                          )}
                           {userRole === 'admin' && (
                             <>
                               <button onClick={() => { setSelectedProductIdForHistory(p.id); setSelectedProductName(p.name); }} className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm group/btn" title={t.historyTitle}>
