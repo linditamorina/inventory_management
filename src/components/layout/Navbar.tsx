@@ -211,17 +211,7 @@ export default function Navbar() {
                   <div className="text-[9px] font-bold bg-slate-100 text-slate-400 px-2 py-1 rounded-lg uppercase group-hover:bg-red-600 group-hover:text-white transition-colors">
                     {language.toUpperCase()}
                   </div>
-                </button>
-
-                {/* {userRole === 'admin' && ( */}
-                  {/* // <button onClick={() => { setIsProfileOpen(false); router.push('/dashboard/staff'); }} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all group"> */}
-                    {/* <div className="flex items-center gap-3">
-                      <div className="p-2 bg-slate-100 rounded-xl text-slate-500 group-hover:bg-red-50 group-hover:text-red-600 transition-colors"><User size={16} /></div>
-                      <span className="text-[11px] font-black uppercase text-slate-600 italic">{t('manage_staff')}</span>
-                    </div>
-                    <ChevronRight size={14} className="text-slate-300" /> */}
-                  {/* // </button> */}
-                
+                </button>                
                 
                 {/* Ndrysho Fjalëkalimin */}
                 <button onClick={() => { setIsProfileOpen(false); router.push('/reset-password'); }} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all group">

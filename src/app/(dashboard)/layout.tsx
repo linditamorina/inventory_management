@@ -50,16 +50,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Receipt size={20} /> Orders
             </Link>
 
-            {/* Invoices - Të gjithë */}
-            <Link href="/invoices" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/invoices' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
-              <FileText size={20} /> Invoices
-            </Link>
-
-            {/* Invoice History - Të gjithë */}
-            <Link href="/invoices/history" className={`flex items-center gap-4 px-4 py-3 rounded-xl ${pathname === '/invoices/history' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
-              <History size={20} /> Invoice History
-            </Link>
-
             {/* Admin Only Links */}
             {userRole === 'admin' && (
               <>
