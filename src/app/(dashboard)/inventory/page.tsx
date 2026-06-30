@@ -1019,7 +1019,7 @@ export default function InventoryPage() {
           <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
             <div className="bg-[#1a1a1a] p-8 flex justify-between items-center text-white">
               <h2 className="text-xl font-black uppercase tracking-tighter flex items-center gap-3"><ArrowUpDown className="text-emerald-500" /> {t.newStock}</h2>
-              <button onClick={() => setIsAdjustmentModalOpen(false)} className="bg-white/5 p-3 rounded-2xl hover:bg-red-600 transition-all"><X size={20} /></button>
+              <button onClick={() => setIsAdjustmentModalOpen(false)} className="bg-white/5 close-in-out p-3 rounded-2xl hover:bg-red-600 transition-all"><X size={20} /></button>
             </div>
             <form onSubmit={handleAdjustmentSubmit} className="p-8 space-y-6">
               <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
@@ -1059,7 +1059,7 @@ export default function InventoryPage() {
                 </h2>
                 <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.3em] mt-1.5">{t.stockDetails}</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="bg-white/10 p-3 rounded-2xl hover:bg-red-600 hover:text-white transition-all relative z-10 group">
+              <button onClick={() => setIsModalOpen(false)} className="bg-white/10 close-modal-shto p-3 rounded-2xl hover:bg-red-600 hover:text-white transition-all relative z-10 group">
                 <X size={20} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-300" />
               </button>
             </div>
