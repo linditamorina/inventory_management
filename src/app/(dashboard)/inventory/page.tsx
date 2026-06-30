@@ -1138,8 +1138,13 @@ export default function InventoryPage() {
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                       <Hash size={12} className="text-slate-300" /> {t.qty}
                     </label>
-                    <input required type="number" min="0" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} 
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-black text-slate-800 transition-all shadow-inner text-sm" 
+                    <input required type="number" min="0" value={formData.quantity}
+                      onKeyDown={(e) => ['e', 'E', '+', '-', '.'].includes(e.key) && e.preventDefault()}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        setFormData({ ...formData, quantity: val });
+                      }}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-red-600/10 focus:border-red-300 font-black text-slate-800 transition-all shadow-inner text-sm"
                     />
                   </div>
                 </div>

@@ -3,6 +3,8 @@
 
 Një sistem modern dhe inteligjent për menaxhimin e inventarit, i krijuar për bizneset e vogla dhe të mesme. Ky projekt integron fuqinë e **Inteligjencës Artificiale** për të parashikuar stokun dhe automatizuar proceset manuale.
 
+**Vercel link:** https://inventory-management-five-wheat.vercel.app/
+
 ---
 
 ## 👥 Ekipi dhe Rolet
@@ -33,11 +35,9 @@ Projekti është zhvilluar nga një ekip prej 3 personash me një strukturë Agi
 
 ### 🤖 Integrimi i AI (Diferencuesi në Treg)
 * **AI Stock Predictor:** Analizon historikun e shitjeve për të parashikuar nevojat e furnizimit në të ardhmen.
-* **AI Smart Scanner:** Plotësim automatik i fushave të produktit përmes skanimit të faturave (OCR).
 * **AI SEO Descriptions:** Gjenerimi automatik i përshkrimit të produkteve për marketing.
 
 ### 💳 Shitjet dhe Raportimi
-* **POS Interface:** Ndërfaqe e shpejtë për pikat e shitjes.
 * **Gjenerimi i Faturave:** Krijimi i faturave profesionale në PDF menjëherë pas shitjes.
 * **Exportimi i të dhënave:** Shkarkimi i raporteve në format CSV/Excel.
 
